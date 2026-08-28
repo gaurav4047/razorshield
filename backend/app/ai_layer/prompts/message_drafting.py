@@ -1,0 +1,1 @@
+# Message drafting prompt (Gemini)
