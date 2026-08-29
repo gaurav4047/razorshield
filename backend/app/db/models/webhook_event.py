@@ -19,6 +19,7 @@ class RawWebhookEvent(Base):
     __tablename__ = "raw_webhook_events"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Unique delivery ID from X-Razorpay-Event-Id header for idempotency
     razorpay_event_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

@@ -15,6 +15,7 @@ router = APIRouter()
 async def handle_razorpay_webhook(
     request: Request,
     x_razorpay_signature: str | None = Header(None, alias="X-Razorpay-Signature"),
+    x_razorpay_event_id: str | None = Header(None, alias="X-Razorpay-Event-Id"),
     db: AsyncSession = Depends(get_db),
 ):
     raw_body = await request.body()
@@ -50,15 +51,11 @@ async def handle_razorpay_webhook(
             detail=f"Invalid JSON payload: {str(exc)}",
         )
 
-    event_id = (
-        payload.get("id")
-        or payload.get("event_id")
-        or payload.get("payload", {}).get("payment", {}).get("entity", {}).get("id")
-        or payload.get("payload", {}).get("order", {}).get("entity", {}).get("id")
-    )
+    # 3. Event Identification: Use X-Razorpay-Event-Id header (unique per delivery), not underlying entity IDs
+    event_id = x_razorpay_event_id or payload.get("event_id") or payload.get("id")
     event_type = payload.get("event", "unknown")
 
-    # 3. Idempotency Check: Return 200 OK without re-inserting or reprocessing if already stored
+    # 4. Idempotency Check: Return 200 OK without re-inserting if this specific delivery was already processed
     if event_id:
         existing = await db.execute(
             select(RawWebhookEvent).where(RawWebhookEvent.razorpay_event_id == event_id)
@@ -70,7 +67,7 @@ async def handle_razorpay_webhook(
                 "event_type": event_type,
             }
 
-    # 4. Persistence: Record verified event in raw_webhook_events
+    # 5. Persistence: Record verified event in raw_webhook_events
     webhook_event = RawWebhookEvent(
         razorpay_event_id=event_id,
         event_type=event_type,
