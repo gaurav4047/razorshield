@@ -84,15 +84,30 @@ class PaymentCase(Base):
     razorpay_order_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     method: Mapped[PaymentMethod] = mapped_column(
-        SQLEnum(PaymentMethod, name="payment_method", native_enum=True),
+        SQLEnum(
+            PaymentMethod,
+            name="payment_method",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     context: Mapped[PaymentContext] = mapped_column(
-        SQLEnum(PaymentContext, name="payment_context", native_enum=True),
+        SQLEnum(
+            PaymentContext,
+            name="payment_context",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     subscription_state: Mapped[SubscriptionState | None] = mapped_column(
-        SQLEnum(SubscriptionState, name="subscription_state", native_enum=True),
+        SQLEnum(
+            SubscriptionState,
+            name="subscription_state",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=True,
     )
 
@@ -105,7 +120,12 @@ class PaymentCase(Base):
     attempt_number: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="1", default=1)
 
     fault_attribution: Mapped[FaultAttribution] = mapped_column(
-        SQLEnum(FaultAttribution, name="fault_attribution", native_enum=True),
+        SQLEnum(
+            FaultAttribution,
+            name="fault_attribution",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         server_default=FaultAttribution.UNKNOWN.value,
         default=FaultAttribution.UNKNOWN,
@@ -114,7 +134,12 @@ class PaymentCase(Base):
     diagnosis_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
 
     recommended_intervention: Mapped[InterventionType | None] = mapped_column(
-        SQLEnum(InterventionType, name="intervention_type", native_enum=True),
+        SQLEnum(
+            InterventionType,
+            name="intervention_type",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=True,
     )
     npci_execution_window_conflict: Mapped[bool] = mapped_column(
@@ -125,7 +150,12 @@ class PaymentCase(Base):
     )
 
     status: Mapped[PaymentCaseStatus] = mapped_column(
-        SQLEnum(PaymentCaseStatus, name="payment_case_status", native_enum=True),
+        SQLEnum(
+            PaymentCaseStatus,
+            name="payment_case_status",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         server_default=PaymentCaseStatus.OPEN.value,
         default=PaymentCaseStatus.OPEN,

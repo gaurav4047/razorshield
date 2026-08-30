@@ -71,7 +71,12 @@ class Invoice(Base):
     statutory_due_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     status: Mapped[InvoiceStatus] = mapped_column(
-        SQLEnum(InvoiceStatus, name="invoice_status", native_enum=True),
+        SQLEnum(
+            InvoiceStatus,
+            name="invoice_status",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         server_default=InvoiceStatus.PENDING.value,
         default=InvoiceStatus.PENDING,
@@ -149,7 +154,12 @@ class InvoicePromise(Base):
     confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
 
     status: Mapped[PromiseStatus] = mapped_column(
-        SQLEnum(PromiseStatus, name="promise_status", native_enum=True),
+        SQLEnum(
+            PromiseStatus,
+            name="promise_status",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         server_default=PromiseStatus.PENDING.value,
         default=PromiseStatus.PENDING,

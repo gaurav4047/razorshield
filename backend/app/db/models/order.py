@@ -57,7 +57,12 @@ class AbandonedOrder(Base):
     razorpay_payment_link_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[AbandonedOrderStatus] = mapped_column(
-        SQLEnum(AbandonedOrderStatus, name="abandoned_order_status", native_enum=True),
+        SQLEnum(
+            AbandonedOrderStatus,
+            name="abandoned_order_status",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         server_default=AbandonedOrderStatus.OPEN.value,
         default=AbandonedOrderStatus.OPEN,

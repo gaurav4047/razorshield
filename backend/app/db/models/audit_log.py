@@ -41,7 +41,12 @@ class AuditLogEntry(Base):
     )
 
     case_type: Mapped[CaseType] = mapped_column(
-        SQLEnum(CaseType, name="case_type", native_enum=True),
+        SQLEnum(
+            CaseType,
+            name="case_type",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -52,7 +57,12 @@ class AuditLogEntry(Base):
         server_default=func.now(),
     )
     stage: Mapped[PipelineStage] = mapped_column(
-        SQLEnum(PipelineStage, name="pipeline_stage", native_enum=True),
+        SQLEnum(
+            PipelineStage,
+            name="pipeline_stage",
+            native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
 

@@ -1,1 +1,51 @@
-# Pipeline runner entrypoint
+import uuid
+from typing import Any
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.order import AbandonedOrder
+from app.pipeline.graph import build_module_graph
+from app.pipeline.state import PipelineState
+
+# Pre-compiled graphs per module
+module_graphs = {
+    "A": build_module_graph("A"),
+    "B": build_module_graph("B"),
+    "C": build_module_graph("C"),
+}
+
+
+async def run_pipeline_for_order(order_id: uuid.UUID | str, db: AsyncSession) -> PipelineState:
+    order_uuid = uuid.UUID(str(order_id))
+    result = await db.execute(select(AbandonedOrder).where(AbandonedOrder.id == order_uuid))
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise ValueError(f"AbandonedOrder with ID {order_id} not found")
+
+    initial_state: PipelineState = {
+        "module": "C",
+        "case_id": str(order.id),
+        "batch_id": str(order.batch_id),
+        "order_amount_paise": order.amount_paise,
+        "order_created_at": order.order_created_at.isoformat() if order.order_created_at else None,
+        "nudge_sent": order.nudge_sent,
+        "abandonment_detected": True,
+        "fault_attribution": None,
+        "classified_root_cause": None,
+        "ai_reasoning": None,
+        "diagnosis_confidence": None,
+        "recommended_intervention": None,
+        "policy_passed": False,
+        "stopping_rules_checked": [],
+        "rule_recommendation": None,
+        "final_decision": "unprocessed",
+        "reason": None,
+        "razorpay_reference_id": None,
+        "execution_result": None,
+        "audit_entry_id": None,
+    }
+
+    graph = module_graphs["C"]
+    final_state = await graph.ainvoke(initial_state)
+    return final_state
