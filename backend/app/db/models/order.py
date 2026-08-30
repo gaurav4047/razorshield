@@ -54,6 +54,7 @@ class AbandonedOrder(Base):
 
     nudge_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     nudge_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    buyer_archetype: Mapped[str | None] = mapped_column(Text, nullable=True)
     razorpay_payment_link_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[AbandonedOrderStatus] = mapped_column(

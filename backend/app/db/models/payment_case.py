@@ -163,6 +163,7 @@ class PaymentCase(Base):
     retry_count: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0", default=0)
     last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    buyer_archetype: Mapped[str | None] = mapped_column(Text, nullable=True)
     razorpay_payment_link_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
