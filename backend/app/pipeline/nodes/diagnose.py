@@ -3,8 +3,36 @@ from app.ai_layer.prompts.signal_parsing import parse_failure_signal
 from app.config import settings
 from app.db.models.payment_case import FaultAttribution, PaymentMethod
 from app.domain_logic.intervention_types import select_intervention
-from app.domain_logic.payment_taxonomy import classify_root_cause
+from app.domain_logic.payment_taxonomy import (
+    classify_root_cause,
+    get_valid_root_causes_for_method,
+)
 from app.pipeline.state import PipelineState
+
+# Canonical alias mapping for common LLM variations
+CANONICAL_ROOT_CAUSE_MAP = {
+    "upi_bank_unavailable": "upi_bank_server_unavailable",
+    "bank_unavailable": "upi_bank_server_unavailable",
+    "bank_timeout": "upi_bank_server_unavailable",
+    "npci_timeout": "npci_switch_timeout",
+    "npci_degraded": "npci_switch_timeout",
+    "upi_psp_unavailable": "upi_bank_server_unavailable",
+    "upi_beneficiary_timeout": "upi_bank_server_unavailable",
+    "3ds_timeout": "issuer_timeout",
+    "gateway_timeout": "issuer_timeout",
+    "card_gateway_timeout": "issuer_timeout",
+    "card_3ds_timeout": "issuer_timeout",
+    "card_network_error": "network_glitch",
+    "card_system_error": "network_glitch",
+    "card_invalid_cvv": "card_lost_or_stolen",
+    "card_do_not_honor": "card_lost_or_stolen",
+    "card_suspected_fraud": "card_lost_or_stolen",
+    "card_invalid_number": "card_lost_or_stolen",
+    "upi_invalid_mpin": "wrong_upi_pin",
+    "upi_mpin_exceeded": "wrong_upi_pin",
+    "upi_vpa_deactivated": "mandate_expired",
+    "upi_user_dropped": "insufficient_balance",
+}
 
 
 async def diagnose_node(state: PipelineState) -> dict:
@@ -50,12 +78,30 @@ async def diagnose_node(state: PipelineState) -> dict:
             failure_code=failure_code,
         )
 
-        root_cause = ai_res.classified_root_cause
+        raw_classified = (ai_res.classified_root_cause or "").strip().lower()
         fault_attr = ai_res.fault_attribution
         confidence = float(ai_res.confidence)
         reasoning = ai_res.brief_reasoning
 
-        # 3. Confidence Threshold Gate: Low confidence forces human escalation per 05_ai_layer.md §4a
+        # 3. Post-call validation against closed vocabulary per 05_ai_layer.md §4a
+        valid_causes = get_valid_root_causes_for_method(method_enum)
+
+        # Normalize via canonical alias map if needed
+        normalized_root_cause = CANONICAL_ROOT_CAUSE_MAP.get(raw_classified, raw_classified)
+
+        is_valid_cause = normalized_root_cause in valid_causes
+
+        if not is_valid_cause:
+            # Invalid/unmatched category returned by model -> reject and escalate to human
+            return {
+                "fault_attribution": "unknown",
+                "classified_root_cause": None,
+                "ai_reasoning": f"Rejected invalid root cause '{raw_classified}': not in closed vocabulary. {reasoning}",
+                "diagnosis_confidence": 0.0,
+                "recommended_intervention": "escalate_human",
+            }
+
+        # 4. Confidence Threshold Gate: Low confidence forces human escalation
         if confidence < settings.AI_CONFIDENCE_THRESHOLD:
             intervention = "escalate_human"
         else:
@@ -66,14 +112,14 @@ async def diagnose_node(state: PipelineState) -> dict:
             )
             intervention_enum = select_intervention(
                 fault_attribution=attr_enum,
-                classified_root_cause=root_cause,
+                classified_root_cause=normalized_root_cause,
                 attempt_number=attempt_number,
             )
             intervention = intervention_enum.value
 
         return {
             "fault_attribution": fault_attr,
-            "classified_root_cause": root_cause,
+            "classified_root_cause": normalized_root_cause,
             "ai_reasoning": reasoning,
             "diagnosis_confidence": confidence,
             "recommended_intervention": intervention,

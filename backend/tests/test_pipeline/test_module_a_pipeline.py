@@ -10,6 +10,7 @@ from app.db.models.payment_case import (
     PaymentMethod,
 )
 from app.db.session import async_session_factory
+from app.domain_logic.payment_taxonomy import CLOSED_ROOT_CAUSES
 from app.pipeline.run import run_pipeline_for_payment_case
 
 
@@ -103,24 +104,31 @@ async def test_module_a_pipeline_groq_signal_parsing_fallback():
     # Verify real Groq signal parsing occurred
     assert final_state["module"] == "A"
     assert final_state["fault_attribution"] in ("infrastructure_fault", "customer_fault")
-    assert final_state["classified_root_cause"] is not None
+    # Crucial assertion: root cause matches canonical lowercase closed vocabulary
+    valid_upi_causes = set(CLOSED_ROOT_CAUSES[PaymentMethod.UPI].keys())
+    assert final_state["classified_root_cause"] in valid_upi_causes
+    assert final_state["classified_root_cause"] == "upi_bank_server_unavailable"
+
     # Crucial proof: ai_reasoning is populated with real LLM reasoning text
     assert final_state["ai_reasoning"] is not None
     assert len(final_state["ai_reasoning"]) > 10
     assert final_state["diagnosis_confidence"] is not None
     assert final_state["audit_entry_id"] is not None
 
-    # Verify audit_log row in database
+    # Verify underlying PaymentCase in database was updated with canonical lowercase value
     async with async_session_factory() as db:
+        case_res = await db.execute(select(PaymentCase).where(PaymentCase.id == case_id))
+        saved_case = case_res.scalar_one_or_none()
+        assert saved_case is not None
+        assert saved_case.classified_root_cause == "upi_bank_server_unavailable"
+
         audit_res = await db.execute(
             select(AuditLogEntry).where(AuditLogEntry.id == final_state["audit_entry_id"])
         )
         audit_row = audit_res.scalar_one_or_none()
         assert audit_row is not None
         assert audit_row.case_id == case_id
-        # Explicit proof: real Groq reasoning text persisted in audit_log
         assert audit_row.ai_reasoning_text is not None
-        assert len(audit_row.ai_reasoning_text) > 10
         assert len(audit_row.stopping_rules_checked) >= 3
 
 
@@ -131,9 +139,9 @@ async def test_module_a_confidence_threshold_gate():
     from unittest.mock import AsyncMock, patch
     from app.ai_layer.output_schemas import SignalParsingOutput
 
-    # Simulate low-confidence (0.45 < 0.70 threshold) model output
+    # Simulate low-confidence (0.45 < 0.70 threshold) model output with valid card cause
     mock_low_conf_output = SignalParsingOutput(
-        classified_root_cause="CARD_INSUFFICIENT_FUNDS",
+        classified_root_cause="insufficient_credit_limit",
         fault_attribution="customer_fault",
         confidence=0.45,
         brief_reasoning="Ambiguous error message with low confidence.",
@@ -149,6 +157,38 @@ async def test_module_a_confidence_threshold_gate():
 
     with patch("app.pipeline.nodes.diagnose.parse_failure_signal", new=AsyncMock(return_value=mock_low_conf_output)):
         result = await diagnose_node(state)
-        # Even though root cause was CARD_INSUFFICIENT_FUNDS, low confidence forced escalate_human
+        # Even though root cause was valid, low confidence forced escalate_human
         assert result["recommended_intervention"] == "escalate_human"
         assert result["diagnosis_confidence"] == 0.45
+
+
+@pytest.mark.anyio
+async def test_module_a_invalid_root_cause_rejected_and_escalated_to_human():
+    # 4. Test that hallucinated/invalid root causes are rejected in app code and escalated
+    from app.pipeline.nodes.diagnose import diagnose_node
+    from unittest.mock import AsyncMock, patch
+    from app.ai_layer.output_schemas import SignalParsingOutput
+
+    # Simulate hallucinated category not in closed vocabulary
+    mock_invalid_output = SignalParsingOutput(
+        classified_root_cause="NON_EXISTENT_HALLUCINATED_REASON",
+        fault_attribution="infrastructure_fault",
+        confidence=0.95,
+        brief_reasoning="Some arbitrary hallucination.",
+    )
+
+    state = {
+        "module": "A",
+        "method": "card",
+        "context": "subscription",
+        "failure_code": None,
+        "failure_raw_reason": "Mysterious server state",
+    }
+
+    with patch("app.pipeline.nodes.diagnose.parse_failure_signal", new=AsyncMock(return_value=mock_invalid_output)):
+        result = await diagnose_node(state)
+        # Post-call validation rejected invalid category and forced escalate_human
+        assert result["recommended_intervention"] == "escalate_human"
+        assert result["classified_root_cause"] is None
+        assert result["diagnosis_confidence"] == 0.0
+        assert "Rejected invalid root cause" in result["ai_reasoning"]

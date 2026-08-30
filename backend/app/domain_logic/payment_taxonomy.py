@@ -73,3 +73,14 @@ def classify_root_cause(
     # 3. Unmatched -> route to AI layer
     fault = attribute_fault(method, failure_code, raw_reason)
     return None, fault
+
+
+def get_valid_root_causes_for_method(method: PaymentMethod | str) -> set[str]:
+    method_enum = (
+        PaymentMethod(method)
+        if isinstance(method, str) and method in PaymentMethod._value2member_map_
+        else method
+    )
+    causes_dict = CLOSED_ROOT_CAUSES.get(method_enum, {})
+    return set(causes_dict.keys())
+
