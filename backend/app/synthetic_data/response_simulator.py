@@ -1,6 +1,8 @@
-import random
 from datetime import date, timedelta
+import random
+from typing import Any
 
+from app.razorpay_client.client import create_payment_link
 
 # At least 4-5 distinct realistic phrasings per response category per 06_synthetic_data.md §6
 DISPUTE_MESSAGES = [
@@ -46,3 +48,23 @@ def get_simulated_buyer_reply(archetype: str, amount_inr: float = 50000.0) -> st
         return msg_template.format(amount=f"{amount_inr:,.2f}", date=promised_dt)
 
     return None
+
+
+async def trigger_live_payment_link_recovery(
+    amount_paise: int,
+    reference_id: str,
+    description: str,
+    customer_name: str = "Test Customer",
+    customer_email: str = "customer@example.com",
+    customer_contact: str = "+919876543210",
+) -> dict[str, Any]:
+    # Calls real api.razorpay.com/v1/payment_links with test credentials
+    plink = await create_payment_link(
+        amount_paise=amount_paise,
+        reference_id=reference_id,
+        description=description,
+        customer_name=customer_name,
+        customer_email=customer_email,
+        customer_contact=customer_contact,
+    )
+    return plink
