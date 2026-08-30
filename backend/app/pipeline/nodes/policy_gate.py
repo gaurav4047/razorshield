@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+from app.db.models.payment_case import InterventionType, PaymentContext, PaymentMethod
 from app.domain_logic.stopping_rules import (
     check_module_a_policy_gate,
     check_module_b_policy_gate,
@@ -8,6 +10,55 @@ from app.pipeline.state import PipelineState
 
 async def policy_gate_node(state: PipelineState) -> dict:
     module = state.get("module")
+
+    if module == "A":
+        method_str = state.get("method", "card")
+        context_str = state.get("context", "one_time")
+        root_cause = state.get("classified_root_cause")
+        intervention_str = state.get("recommended_intervention")
+        retry_count = state.get("retry_count", 0) or 0
+        attempt_number = state.get("attempt_number", 1) or 1
+
+        method_enum = (
+            PaymentMethod(method_str)
+            if method_str in PaymentMethod._value2member_map_
+            else PaymentMethod.CARD
+        )
+        context_enum = (
+            PaymentContext(context_str)
+            if context_str in PaymentContext._value2member_map_
+            else PaymentContext.ONE_TIME
+        )
+        intervention_enum = (
+            InterventionType(intervention_str)
+            if intervention_str in InterventionType._value2member_map_
+            else None
+        )
+
+        last_action_str = state.get("last_action_at")
+        last_action_dt = datetime.fromisoformat(last_action_str) if last_action_str else None
+        now_dt = datetime.now(timezone.utc)
+
+        gate_res = check_module_a_policy_gate(
+            method=method_enum,
+            context=context_enum,
+            classified_root_cause=root_cause,
+            recommended_intervention=intervention_enum,
+            attempt_number=attempt_number,
+            retry_count=retry_count,
+            last_action_at=last_action_dt,
+            now=now_dt,
+        )
+
+        return {
+            "policy_passed": gate_res.allowed,
+            "final_decision": gate_res.final_action,
+            "reason": gate_res.reason,
+            "stopping_rules_checked": gate_res.stopping_rules_checked,
+            "rule_recommendation": gate_res.rule_recommendation,
+            "npci_window_conflict": gate_res.npci_window_conflict,
+            "reschedule_at": gate_res.reschedule_at.isoformat() if gate_res.reschedule_at else None,
+        }
 
     if module == "C":
         amount_paise = state.get("order_amount_paise") or 0

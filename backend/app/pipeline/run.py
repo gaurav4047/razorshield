@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.order import AbandonedOrder
+from app.db.models.payment_case import PaymentCase
 from app.pipeline.graph import build_module_graph
 from app.pipeline.state import PipelineState
 
@@ -13,6 +14,46 @@ module_graphs = {
     "B": build_module_graph("B"),
     "C": build_module_graph("C"),
 }
+
+
+async def run_pipeline_for_payment_case(case_id: uuid.UUID | str, db: AsyncSession) -> PipelineState:
+    case_uuid = uuid.UUID(str(case_id))
+    result = await db.execute(select(PaymentCase).where(PaymentCase.id == case_uuid))
+    pc = result.scalar_one_or_none()
+
+    if not pc:
+        raise ValueError(f"PaymentCase with ID {case_id} not found")
+
+    initial_state: PipelineState = {
+        "module": "A",
+        "case_id": str(pc.id),
+        "batch_id": str(pc.batch_id),
+        "method": pc.method.value,
+        "context": pc.context.value,
+        "failure_code": pc.failure_code,
+        "failure_raw_reason": pc.failure_raw_reason,
+        "attempt_number": pc.attempt_number,
+        "retry_count": pc.retry_count,
+        "last_action_at": pc.last_action_at.isoformat() if pc.last_action_at else None,
+        "subscription_state": pc.subscription_state.value if pc.subscription_state else None,
+        "fault_attribution": None,
+        "classified_root_cause": None,
+        "ai_reasoning": None,
+        "diagnosis_confidence": None,
+        "recommended_intervention": None,
+        "policy_passed": False,
+        "stopping_rules_checked": [],
+        "rule_recommendation": None,
+        "final_decision": "unprocessed",
+        "reason": None,
+        "razorpay_reference_id": None,
+        "execution_result": None,
+        "audit_entry_id": None,
+    }
+
+    graph = module_graphs["A"]
+    final_state = await graph.ainvoke(initial_state)
+    return final_state
 
 
 async def run_pipeline_for_order(order_id: uuid.UUID | str, db: AsyncSession) -> PipelineState:

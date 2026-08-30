@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # RBI bank rate per MSMED Act Section 16 (verified 5.50% as of August 2026; re-check at rbi.org.in)
     RBI_BANK_RATE: Decimal = Decimal("5.50")
 
+    # AI Layer config
+    AI_CONFIDENCE_THRESHOLD: float = 0.70
+
     # Module C config
     ABANDONED_ORDER_THRESHOLD_MINUTES: int = 30
     LOW_VALUE_FLOOR_PAISE: int = 20000  # Rs 200

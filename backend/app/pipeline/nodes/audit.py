@@ -1,10 +1,17 @@
+from decimal import Decimal
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.audit_log import AuditLogEntry, CaseType, PipelineStage
 from app.db.models.order import AbandonedOrder, AbandonedOrderStatus
+from app.db.models.payment_case import (
+    FaultAttribution,
+    InterventionType,
+    PaymentCase,
+    PaymentCaseStatus,
+)
 from app.db.session import async_session_factory
 from app.pipeline.state import PipelineState
 
@@ -49,13 +56,41 @@ async def audit_node(state: PipelineState) -> dict:
         db.add(audit_entry)
 
         # 2. Update the underlying record in database
-        if module == "C" and case_id_str:
+        now_utc = datetime.now(timezone.utc)
+
+        if module == "A" and case_id_str:
+            case_res = await db.execute(
+                select(PaymentCase).where(PaymentCase.id == case_uuid)
+            )
+            pc = case_res.scalar_one_or_none()
+            if pc:
+                if state.get("fault_attribution"):
+                    pc.fault_attribution = FaultAttribution(state["fault_attribution"])
+                if state.get("classified_root_cause"):
+                    pc.classified_root_cause = state["classified_root_cause"]
+                if state.get("diagnosis_confidence") is not None:
+                    pc.diagnosis_confidence = Decimal(str(round(state["diagnosis_confidence"], 3)))
+                if state.get("recommended_intervention"):
+                    pc.recommended_intervention = InterventionType(state["recommended_intervention"])
+                if state.get("npci_window_conflict") is not None:
+                    pc.npci_execution_window_conflict = state["npci_window_conflict"]
+
+                if final_decision in ("silent_retry", "delayed_retry_notify", "alternate_method"):
+                    pc.status = PaymentCaseStatus.RETRIED
+                    pc.retry_count += 1
+                    pc.last_action_at = now_utc
+                    if razorpay_ref and razorpay_ref.startswith("plink_"):
+                        pc.razorpay_payment_link_id = razorpay_ref
+                elif final_decision == "escalate_human":
+                    pc.status = PaymentCaseStatus.ESCALATED
+                    pc.last_action_at = now_utc
+
+        elif module == "C" and case_id_str:
             order_res = await db.execute(
                 select(AbandonedOrder).where(AbandonedOrder.id == case_uuid)
             )
             order = order_res.scalar_one_or_none()
             if order:
-                now_utc = datetime.now(timezone.utc)
                 if final_decision == "send_abandonment_nudge":
                     order.nudge_sent = True
                     order.nudge_sent_at = now_utc
