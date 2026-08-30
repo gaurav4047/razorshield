@@ -82,6 +82,7 @@ async def run_pipeline_for_payment_case(case_id: uuid.UUID | str, db: AsyncSessi
         "failure_raw_reason": pc.failure_raw_reason,
         "attempt_number": pc.attempt_number,
         "retry_count": pc.retry_count,
+        "order_amount_paise": pc.amount_paise,
         "last_action_at": pc.last_action_at.isoformat() if pc.last_action_at else None,
         "subscription_state": pc.subscription_state.value if pc.subscription_state else None,
         "fault_attribution": None,

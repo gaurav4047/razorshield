@@ -12,8 +12,10 @@ from app.db.models.payment_case import (
     InterventionType,
     PaymentCase,
     PaymentCaseStatus,
+    PaymentMethod,
 )
 from app.db.session import async_session_factory
+from app.domain_logic.settlement import compute_settlement
 from app.pipeline.state import PipelineState
 
 
@@ -40,8 +42,33 @@ async def audit_node(state: PipelineState) -> dict:
     case_uuid = uuid.UUID(case_id_str) if case_id_str else uuid.uuid4()
     batch_uuid = uuid.UUID(batch_id_str) if batch_id_str else uuid.uuid4()
 
+    # Call compute_settlement whenever gross amount is present per 03_domain_logic.md §7
+    mdr_paise = None
+    gst_on_mdr_paise = None
+    net_amount_paise = None
+
+    if gross_amount:
+        method_str = state.get("method", "card")
+        method_enum = (
+            PaymentMethod(method_str)
+            if method_str in PaymentMethod._value2member_map_
+            else PaymentMethod.CARD
+        )
+        is_rupay = bool(state.get("is_rupay_credit_on_upi", False))
+        is_cardless = bool(state.get("is_cardless_emi", False))
+
+        breakdown = compute_settlement(
+            gross_amount_paise=gross_amount,
+            method=method_enum,
+            is_rupay_credit_on_upi=is_rupay,
+            is_cardless_emi=is_cardless,
+        )
+        mdr_paise = breakdown.mdr_paise
+        gst_on_mdr_paise = breakdown.gst_on_mdr_paise
+        net_amount_paise = breakdown.net_amount_paise
+
     async with async_session_factory() as db:
-        # 1. Unconditionally insert row in audit_log
+        # 1. Unconditionally insert row in audit_log with settlement breakdown
         audit_entry = AuditLogEntry(
             batch_id=batch_uuid,
             case_type=case_type,
@@ -53,6 +80,9 @@ async def audit_node(state: PipelineState) -> dict:
             final_action=final_decision,
             reason=reason,
             gross_amount_paise=gross_amount,
+            mdr_paise=mdr_paise,
+            gst_on_mdr_paise=gst_on_mdr_paise,
+            net_amount_paise=net_amount_paise,
             computed_interest_accrued_paise=computed_interest,
             razorpay_reference=razorpay_ref,
         )
@@ -87,6 +117,9 @@ async def audit_node(state: PipelineState) -> dict:
                 elif final_decision == "escalate_human":
                     pc.status = PaymentCaseStatus.ESCALATED
                     pc.last_action_at = now_utc
+                elif final_decision == "recovered":
+                    pc.status = PaymentCaseStatus.RECOVERED
+                    pc.last_action_at = now_utc
 
         elif module == "B" and case_id_str:
             inv_res = await db.execute(select(Invoice).where(Invoice.id == case_uuid))
@@ -107,6 +140,9 @@ async def audit_node(state: PipelineState) -> dict:
                         inv.razorpay_payment_link_id = razorpay_ref
                 elif final_decision == "pending_human_approval":
                     inv.status = InvoiceStatus.PENDING_HUMAN_APPROVAL
+                elif final_decision == "recovered":
+                    inv.status = InvoiceStatus.PAID
+                    inv.amount_paid_paise = inv.amount_paise
 
         elif module == "C" and case_id_str:
             order_res = await db.execute(
@@ -122,6 +158,8 @@ async def audit_node(state: PipelineState) -> dict:
                         order.razorpay_payment_link_id = razorpay_ref
                 elif final_decision == "skipped_low_value":
                     order.status = AbandonedOrderStatus.SKIPPED_LOW_VALUE
+                elif final_decision == "recovered":
+                    order.status = AbandonedOrderStatus.RECOVERED
 
         await db.commit()
         await db.refresh(audit_entry)
