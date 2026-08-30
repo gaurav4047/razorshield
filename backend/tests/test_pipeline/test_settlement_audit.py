@@ -60,7 +60,7 @@ async def test_confirmed_recovery_audit_log_has_exact_settlement_breakdown():
         "reason": "Payment confirmed via Razorpay webhook payment.captured",
         "razorpay_reference_id": "pay_test_settlement_123",
         "stopping_rules_checked": [
-            {"rule": "settlement_calculation", "passed": True, "detail": "Gross-vs-net MDR & GST computed"}
+            {"rule": "policy_gate_is_final", "passed": True, "detail": "Recovery confirmation processed and logged"}
         ],
     }
 
