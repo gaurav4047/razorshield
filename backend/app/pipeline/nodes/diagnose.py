@@ -1,8 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from app.ai_layer.prompts.reply_classification import classify_buyer_reply
 from app.ai_layer.prompts.signal_parsing import parse_failure_signal
 from app.config import settings
 from app.db.models.payment_case import FaultAttribution, PaymentMethod
+from app.domain_logic.escalation_ladder import compute_escalation_rung
 from app.domain_logic.intervention_types import select_intervention
+from app.domain_logic.msmed import compute_accrued_interest
 from app.domain_logic.payment_taxonomy import (
     classify_root_cause,
     get_valid_root_causes_for_method,
@@ -85,14 +88,11 @@ async def diagnose_node(state: PipelineState) -> dict:
 
         # 3. Post-call validation against closed vocabulary per 05_ai_layer.md §4a
         valid_causes = get_valid_root_causes_for_method(method_enum)
-
-        # Normalize via canonical alias map if needed
         normalized_root_cause = CANONICAL_ROOT_CAUSE_MAP.get(raw_classified, raw_classified)
 
         is_valid_cause = normalized_root_cause in valid_causes
 
         if not is_valid_cause:
-            # Invalid/unmatched category returned by model -> reject and escalate to human
             return {
                 "fault_attribution": "unknown",
                 "classified_root_cause": None,
@@ -123,6 +123,80 @@ async def diagnose_node(state: PipelineState) -> dict:
             "ai_reasoning": reasoning,
             "diagnosis_confidence": confidence,
             "recommended_intervention": intervention,
+        }
+
+    if module == "B":
+        # Module B: Escalation ladder, reply classification & MSMED interest
+        due_date_str = state.get("statutory_due_date")
+        statutory_due_date = date.fromisoformat(due_date_str) if due_date_str else date.today()
+        current_rung = state.get("current_rung", 0) or 0
+        dispute_flag = bool(state.get("dispute_flag", False))
+        broken_promise_count = state.get("broken_promise_count", 0) or 0
+        supplier_is_msme = bool(state.get("supplier_is_msme", True))
+        amount_paise = state.get("order_amount_paise") or 0
+        buyer_reply = state.get("buyer_response_text")
+
+        now_date = date.today()
+
+        # Check for active dispute first
+        if dispute_flag:
+            return {
+                "dispute_flag": True,
+                "recommended_intervention": "halt_dispute_active",
+                "ai_reasoning": None,
+                "diagnosis_confidence": 1.0,
+            }
+
+        # If there's an incoming buyer response, classify it with Groq
+        if buyer_reply:
+            reply_output = await classify_buyer_reply(
+                raw_message=buyer_reply,
+                amount_paise=amount_paise,
+                days_overdue=max(0, (now_date - statutory_due_date).days),
+                reminder_count=current_rung,
+            )
+            classified_as = reply_output.classified_as
+            confidence = float(reply_output.confidence)
+            reasoning = reply_output.brief_reasoning
+
+            # Critical Rule: If classified as dispute OR low confidence dispute-leaning, halt immediately (fail toward caution)
+            if classified_as == "dispute" or (confidence < settings.AI_CONFIDENCE_THRESHOLD and "dispute" in reasoning.lower()):
+                return {
+                    "dispute_flag": True,
+                    "recommended_intervention": "halt_dispute_active",
+                    "ai_reasoning": f"Buyer reply classified as dispute: {reasoning}",
+                    "diagnosis_confidence": confidence,
+                }
+
+            if classified_as == "promise_to_pay":
+                return {
+                    "recommended_intervention": "record_promise",
+                    "ai_reasoning": f"Promise to pay recorded: {reasoning}",
+                    "diagnosis_confidence": confidence,
+                }
+
+        # Deterministic Rung advancement & MSMED Interest Calculation (zero AI calls)
+        target_rung = compute_escalation_rung(
+            statutory_due_date=statutory_due_date,
+            as_of_date=now_date,
+            broken_promise_count=broken_promise_count,
+        )
+
+        interest_paise = 0
+        if supplier_is_msme and target_rung >= 2:
+            interest_paise = compute_accrued_interest(
+                amount_paise=amount_paise,
+                statutory_due_date=statutory_due_date,
+                as_of_date=now_date,
+                rbi_bank_rate=settings.RBI_BANK_RATE,
+            )
+
+        return {
+            "current_rung": target_rung,
+            "computed_interest_paise": interest_paise,
+            "recommended_intervention": f"rung_{target_rung}_action",
+            "ai_reasoning": None,
+            "diagnosis_confidence": 1.0,
         }
 
     if module == "C":

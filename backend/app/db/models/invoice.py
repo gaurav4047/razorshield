@@ -59,8 +59,8 @@ class Invoice(Base):
     buyer_contact: Mapped[str] = mapped_column(Text, nullable=False)
     buyer_email: Mapped[str] = mapped_column(Text, nullable=False)
 
-    supplier_is_msme: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    has_written_agreement: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    supplier_is_msme: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
+    has_written_agreement: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
 
     amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_paid_paise: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0", default=0)

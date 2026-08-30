@@ -4,7 +4,7 @@ from app.pipeline.state import PipelineState
 
 async def execute_node(state: PipelineState) -> dict:
     module = state.get("module")
-    final_decision = state.get("final_decision")
+    final_decision = state.get("final_decision", "")
     case_id = state.get("case_id", "case")
     prefix = case_id[:8] if case_id else "0000"
 
@@ -28,6 +28,28 @@ async def execute_node(state: PipelineState) -> dict:
             return {
                 "razorpay_reference_id": None,
                 "execution_result": "queued_for_human_agent",
+            }
+
+    if module == "B":
+        if final_decision in ("rung_1_action", "first_reminder_with_payment_link"):
+            return {
+                "razorpay_reference_id": f"plink_inv_{prefix}",
+                "execution_result": "rung_1_reminder_sent",
+            }
+        elif final_decision in ("rung_2_action", "second_reminder_with_interest"):
+            return {
+                "razorpay_reference_id": f"plink_inv_{prefix}",
+                "execution_result": "rung_2_interest_reminder_sent",
+            }
+        elif final_decision in ("rung_3_action", "formal_notice_cc_controller"):
+            return {
+                "razorpay_reference_id": f"plink_inv_{prefix}",
+                "execution_result": "rung_3_formal_notice_sent",
+            }
+        elif final_decision == "draft_msme_samadhaan_filing":
+            return {
+                "razorpay_reference_id": None,
+                "execution_result": "msme_samadhaan_packet_drafted",
             }
 
     if module == "C":

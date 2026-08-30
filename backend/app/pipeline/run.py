@@ -3,6 +3,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.invoice import Invoice
 from app.db.models.order import AbandonedOrder
 from app.db.models.payment_case import PaymentCase
 from app.pipeline.graph import build_module_graph
@@ -14,6 +15,53 @@ module_graphs = {
     "B": build_module_graph("B"),
     "C": build_module_graph("C"),
 }
+
+
+async def run_pipeline_for_invoice(
+    invoice_id: uuid.UUID | str,
+    db: AsyncSession,
+    buyer_reply: str | None = None,
+    supplier_is_msme: bool = True,
+    human_approved: bool = False,
+) -> PipelineState:
+    inv_uuid = uuid.UUID(str(invoice_id))
+    result = await db.execute(select(Invoice).where(Invoice.id == inv_uuid))
+    inv = result.scalar_one_or_none()
+
+    if not inv:
+        raise ValueError(f"Invoice with ID {invoice_id} not found")
+
+    initial_state: PipelineState = {
+        "module": "B",
+        "case_id": str(inv.id),
+        "batch_id": str(inv.batch_id),
+        "order_amount_paise": inv.amount_paise,
+        "statutory_due_date": inv.statutory_due_date.isoformat() if inv.statutory_due_date else None,
+        "current_rung": inv.current_rung,
+        "dispute_flag": inv.dispute_flag,
+        "broken_promise_count": inv.broken_promise_count,
+        "supplier_is_msme": supplier_is_msme,
+        "last_contact_at": inv.last_contact_at.isoformat() if inv.last_contact_at else None,
+        "human_approved": human_approved,
+        "buyer_response_text": buyer_reply,
+        "fault_attribution": None,
+        "classified_root_cause": None,
+        "ai_reasoning": None,
+        "diagnosis_confidence": None,
+        "recommended_intervention": None,
+        "policy_passed": False,
+        "stopping_rules_checked": [],
+        "rule_recommendation": None,
+        "final_decision": "unprocessed",
+        "reason": None,
+        "razorpay_reference_id": None,
+        "execution_result": None,
+        "audit_entry_id": None,
+    }
+
+    graph = module_graphs["B"]
+    final_state = await graph.ainvoke(initial_state)
+    return final_state
 
 
 async def run_pipeline_for_payment_case(case_id: uuid.UUID | str, db: AsyncSession) -> PipelineState:

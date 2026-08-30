@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.audit_log import AuditLogEntry, CaseType, PipelineStage
+from app.db.models.invoice import Invoice, InvoiceStatus
 from app.db.models.order import AbandonedOrder, AbandonedOrderStatus
 from app.db.models.payment_case import (
     FaultAttribution,
@@ -27,6 +28,7 @@ async def audit_node(state: PipelineState) -> dict:
     rule_suggested = state.get("rule_recommendation")
     razorpay_ref = state.get("razorpay_reference_id")
     gross_amount = state.get("order_amount_paise")
+    computed_interest = state.get("computed_interest_paise")
 
     case_type_map = {
         "A": CaseType.PAYMENT_CASE,
@@ -51,6 +53,7 @@ async def audit_node(state: PipelineState) -> dict:
             final_action=final_decision,
             reason=reason,
             gross_amount_paise=gross_amount,
+            computed_interest_accrued_paise=computed_interest,
             razorpay_reference=razorpay_ref,
         )
         db.add(audit_entry)
@@ -84,6 +87,26 @@ async def audit_node(state: PipelineState) -> dict:
                 elif final_decision == "escalate_human":
                     pc.status = PaymentCaseStatus.ESCALATED
                     pc.last_action_at = now_utc
+
+        elif module == "B" and case_id_str:
+            inv_res = await db.execute(select(Invoice).where(Invoice.id == case_uuid))
+            inv = inv_res.scalar_one_or_none()
+            if inv:
+                if state.get("current_rung") is not None:
+                    inv.current_rung = state["current_rung"]
+                if state.get("dispute_flag") is not None:
+                    inv.dispute_flag = state["dispute_flag"]
+
+                if final_decision == "blocked_dispute_halt":
+                    inv.dispute_flag = True
+                    inv.status = InvoiceStatus.DISPUTED
+                elif final_decision.startswith("rung_"):
+                    inv.last_contact_at = now_utc
+                    inv.status = InvoiceStatus.OVERDUE
+                    if razorpay_ref and razorpay_ref.startswith("plink_"):
+                        inv.razorpay_payment_link_id = razorpay_ref
+                elif final_decision == "pending_human_approval":
+                    inv.status = InvoiceStatus.PENDING_HUMAN_APPROVAL
 
         elif module == "C" and case_id_str:
             order_res = await db.execute(
