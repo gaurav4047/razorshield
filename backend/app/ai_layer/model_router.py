@@ -23,7 +23,7 @@ def get_model_for_task(task: AiTask) -> BaseChatModel:
     if task == AiTask.MESSAGE_DRAFTING:
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=0.2,
         )
@@ -31,7 +31,7 @@ def get_model_for_task(task: AiTask) -> BaseChatModel:
     if task in (AiTask.CONFLICTING_SIGNAL_REASONING, AiTask.BATCH_PATTERN_DETECTION):
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model="gemini-2.5-pro",
+            model="gemini-3.6-flash",
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=0.0,
         )
