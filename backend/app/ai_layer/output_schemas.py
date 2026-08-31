@@ -29,8 +29,9 @@ class ConflictingSignalOutput(BaseModel):
     reasoning: str
 
 
-class BatchPatternOutput(BaseModel):
-    pattern_found: bool
-    pattern_description: str | None = None
-    affected_case_count: int | None = None
-    confidence: float
+class PatternCandidateOutput(BaseModel):
+    candidate_groupings: list[str]
+
+
+class PatternNarrationOutput(BaseModel):
+    narration: str
