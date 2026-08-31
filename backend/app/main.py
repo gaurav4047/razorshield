@@ -16,6 +16,11 @@ app.add_middleware(
 )
 
 
+from app.api.routes import webhooks
+
+app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}

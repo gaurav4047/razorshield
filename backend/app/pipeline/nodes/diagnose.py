@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+from app.ai_layer.prompts.conflicting_signal_reasoning import evaluate_conflicting_signals
 from app.ai_layer.prompts.reply_classification import classify_buyer_reply
 from app.ai_layer.prompts.signal_parsing import parse_failure_signal
 from app.config import settings
@@ -51,6 +52,7 @@ async def diagnose_node(state: PipelineState) -> dict:
         failure_code = state.get("failure_code")
         raw_reason = state.get("failure_raw_reason", "")
         attempt_number = state.get("attempt_number", 1) or 1
+        case_history = state.get("case_history")
 
         # 1. Deterministic fault attribution & taxonomy classification per 03_domain_logic.md §1-2
         root_cause, deterministic_attribution = classify_root_cause(
@@ -60,18 +62,37 @@ async def diagnose_node(state: PipelineState) -> dict:
         )
 
         if deterministic_attribution != FaultAttribution.UNKNOWN and root_cause is not None:
-            # Deterministic path: direct taxonomy classification without LLM call
+            # Deterministic path: direct taxonomy classification
             intervention_enum = select_intervention(
                 fault_attribution=deterministic_attribution,
                 classified_root_cause=root_cause,
                 attempt_number=attempt_number,
             )
+
+            # Step 5: Conflicting-signal reasoning if case history provides conflicting context
+            if case_history:
+                ai_eval = await evaluate_conflicting_signals(
+                    classified_root_cause=root_cause,
+                    naive_rule_suggestion=intervention_enum.value,
+                    relevant_case_history=case_history,
+                )
+                final_rec = ai_eval.recommended_intervention if not ai_eval.agrees_with_default else intervention_enum.value
+                return {
+                    "fault_attribution": deterministic_attribution.value,
+                    "classified_root_cause": root_cause,
+                    "ai_reasoning": ai_eval.reasoning,
+                    "diagnosis_confidence": 0.95,
+                    "recommended_intervention": final_rec,
+                    "rule_recommendation": intervention_enum.value,
+                }
+
             return {
                 "fault_attribution": deterministic_attribution.value,
                 "classified_root_cause": root_cause,
                 "ai_reasoning": None,
                 "diagnosis_confidence": 1.0,
                 "recommended_intervention": intervention_enum.value,
+                "rule_recommendation": intervention_enum.value,
             }
 
         # 2. AI Fallback: Invoke Groq signal parsing prompt only when attribution is unknown
@@ -99,6 +120,7 @@ async def diagnose_node(state: PipelineState) -> dict:
                 "ai_reasoning": f"Rejected invalid root cause '{raw_classified}': not in closed vocabulary. {reasoning}",
                 "diagnosis_confidence": 0.0,
                 "recommended_intervention": "escalate_human",
+                "rule_recommendation": "escalate_human",
             }
 
         # 4. Confidence Threshold Gate: Low confidence forces human escalation
@@ -117,12 +139,30 @@ async def diagnose_node(state: PipelineState) -> dict:
             )
             intervention = intervention_enum.value
 
+        # Step 5: Conflicting-signal reasoning if case history provides conflicting context
+        if case_history and is_valid_cause:
+            ai_eval = await evaluate_conflicting_signals(
+                classified_root_cause=normalized_root_cause,
+                naive_rule_suggestion=intervention,
+                relevant_case_history=case_history,
+            )
+            final_rec = ai_eval.recommended_intervention if not ai_eval.agrees_with_default else intervention
+            return {
+                "fault_attribution": fault_attr,
+                "classified_root_cause": normalized_root_cause,
+                "ai_reasoning": ai_eval.reasoning,
+                "diagnosis_confidence": confidence,
+                "recommended_intervention": final_rec,
+                "rule_recommendation": intervention,
+            }
+
         return {
             "fault_attribution": fault_attr,
             "classified_root_cause": normalized_root_cause,
             "ai_reasoning": reasoning,
             "diagnosis_confidence": confidence,
             "recommended_intervention": intervention,
+            "rule_recommendation": intervention,
         }
 
     if module == "B":

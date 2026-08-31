@@ -64,7 +64,11 @@ async def run_pipeline_for_invoice(
     return final_state
 
 
-async def run_pipeline_for_payment_case(case_id: uuid.UUID | str, db: AsyncSession) -> PipelineState:
+async def run_pipeline_for_payment_case(
+    case_id: uuid.UUID | str,
+    db: AsyncSession,
+    case_history: str | None = None,
+) -> PipelineState:
     case_uuid = uuid.UUID(str(case_id))
     result = await db.execute(select(PaymentCase).where(PaymentCase.id == case_uuid))
     pc = result.scalar_one_or_none()
@@ -85,6 +89,7 @@ async def run_pipeline_for_payment_case(case_id: uuid.UUID | str, db: AsyncSessi
         "order_amount_paise": pc.amount_paise,
         "last_action_at": pc.last_action_at.isoformat() if pc.last_action_at else None,
         "subscription_state": pc.subscription_state.value if pc.subscription_state else None,
+        "case_history": case_history,
         "fault_attribution": None,
         "classified_root_cause": None,
         "ai_reasoning": None,

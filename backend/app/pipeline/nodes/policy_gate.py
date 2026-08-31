@@ -55,7 +55,7 @@ async def policy_gate_node(state: PipelineState) -> dict:
             "final_decision": gate_res.final_action,
             "reason": gate_res.reason,
             "stopping_rules_checked": gate_res.stopping_rules_checked,
-            "rule_recommendation": gate_res.rule_recommendation,
+            "rule_recommendation": gate_res.rule_recommendation or state.get("rule_recommendation"),
             "npci_window_conflict": gate_res.npci_window_conflict,
             "reschedule_at": gate_res.reschedule_at.isoformat() if gate_res.reschedule_at else None,
         }

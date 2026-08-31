@@ -20,6 +20,7 @@ class PipelineState(TypedDict, total=False):
     attempt_number: int | None
     retry_count: int | None
     last_action_at: str | None
+    case_history: str | None
 
     # Module B / Invoice specific fields
     statutory_due_date: str | None
