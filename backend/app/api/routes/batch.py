@@ -88,36 +88,75 @@ async def get_batch_summary(batch_id: uuid.UUID, db: AsyncSession = Depends(get_
             func.coalesce(func.sum(AuditLogEntry.computed_interest_accrued_paise), 0),
         ).where(
             AuditLogEntry.batch_id == batch_id,
-            AuditLogEntry.final_action.in_(["recovered", "paid"]),
+            AuditLogEntry.final_action.in_(["recovered", "paid", "partially_paid"]),
         )
     )
     gross_rec_paise, total_mdr, total_gst, net_rec_paise, total_interest_accrued = [
         int(x) for x in audit_res.one()
     ]
 
-    # Exception counts
-    unrec_a = int(await db.scalar(
+    # Partial payment metrics
+    partial_res = await db.execute(
+        select(
+            func.count(Invoice.id),
+            func.coalesce(func.sum(Invoice.amount_paid_paise), 0),
+        ).where(
+            Invoice.batch_id == batch_id,
+            Invoice.status == InvoiceStatus.PARTIALLY_PAID,
+        )
+    )
+    partial_count, partial_amount_paise = [int(x) for x in partial_res.one()]
+
+    # Categorized Exception Breakdown
+    low_value_skipped = int(await db.scalar(
+        select(func.count(AbandonedOrder.id)).where(
+            AbandonedOrder.batch_id == batch_id,
+            AbandonedOrder.status == AbandonedOrderStatus.SKIPPED_LOW_VALUE,
+        )
+    ) or 0)
+
+    disputed_halted = int(await db.scalar(
+        select(func.count(Invoice.id)).where(
+            Invoice.batch_id == batch_id,
+            Invoice.dispute_flag.is_(True),
+        )
+    ) or 0)
+
+    hard_declines = int(await db.scalar(
         select(func.count(PaymentCase.id)).where(
             PaymentCase.batch_id == batch_id,
             PaymentCase.status == PaymentCaseStatus.CLOSED_UNRECOVERED,
         )
     ) or 0)
 
+    samadhaan_pending = int(await db.scalar(
+        select(func.count(Invoice.id)).where(
+            Invoice.batch_id == batch_id,
+            Invoice.current_rung == 4,
+            Invoice.status != InvoiceStatus.PAID,
+        )
+    ) or 0)
+
+    # Exception counts
+    unrec_a = hard_declines
     unrec_b = int(await db.scalar(
         select(func.count(Invoice.id)).where(
             Invoice.batch_id == batch_id,
-            Invoice.status == InvoiceStatus.WRITTEN_OFF,
+            Invoice.status.in_([InvoiceStatus.WRITTEN_OFF, InvoiceStatus.DISPUTED]),
         )
     ) or 0)
 
     unrec_c = int(await db.scalar(
         select(func.count(AbandonedOrder.id)).where(
             AbandonedOrder.batch_id == batch_id,
-            AbandonedOrder.status == AbandonedOrderStatus.EXPIRED_UNRECOVERED,
+            AbandonedOrder.status.in_([
+                AbandonedOrderStatus.EXPIRED_UNRECOVERED,
+                AbandonedOrderStatus.SKIPPED_LOW_VALUE,
+            ]),
         )
     ) or 0)
 
-    exception_count = unrec_a + unrec_b + unrec_c
+    exception_count = low_value_skipped + disputed_halted + hard_declines + samadhaan_pending
     recovery_rate = (gross_rec_paise / total_at_risk_paise) if total_at_risk_paise > 0 else 0.0
 
     return {
@@ -135,7 +174,16 @@ async def get_batch_summary(batch_id: uuid.UUID, db: AsyncSession = Depends(get_
         "total_interest_accrued_paise": total_interest_accrued,
         "total_interest_accrued_inr": total_interest_accrued / 100.0,
         "recovery_rate": round(recovery_rate, 4),
+        "partially_paid_count": partial_count,
+        "partially_paid_amount_paise": partial_amount_paise,
+        "partially_paid_amount_inr": partial_amount_paise / 100.0,
         "exception_count": exception_count,
+        "exceptions_breakdown": {
+            "low_value_floor_skipped": low_value_skipped,
+            "disputed_invoices_halted": disputed_halted,
+            "hard_declines_halted": hard_declines,
+            "samadhaan_filing_pending": samadhaan_pending,
+        },
         "modules": {
             "A": {"cases": int(count_a), "at_risk_paise": int(at_risk_a), "at_risk_inr": int(at_risk_a) / 100.0, "exceptions": unrec_a},
             "B": {"cases": int(count_b), "at_risk_paise": int(at_risk_b), "at_risk_inr": int(at_risk_b) / 100.0, "exceptions": unrec_b},
@@ -189,30 +237,22 @@ async def get_batch_pattern(batch_id: uuid.UUID, db: AsyncSession = Depends(get_
     )
     candidates = await propose_pattern_candidates(case_summary)
 
-    # Step 2: Deterministic verification
     findings = detect_systemic_patterns(cases)
 
     # Step 3: Gemini narration on confirmed findings
     narrations = []
     for f in findings:
-        narration_text = await narrate_pattern(
-            pattern_type=f.pattern_type,
-            candidate_description=f.description,
-            bucket_count=f.bucket_count,
-            total_cases_in_scope=f.total_cases_in_scope,
-            observed_share=f.observed_share,
-            expected_share_under_uniform=f.expected_share_under_uniform,
-        )
+        narration_obj = await narrate_pattern(f)
+        excess_ratio = round(f.observed_share / f.expected_share_under_uniform, 2) if f.expected_share_under_uniform > 0 else 1.0
         narrations.append(
             {
-                "pattern_type": f.pattern_type,
-                "description": f.description,
+                "grouping_description": f.grouping_description,
                 "bucket_count": f.bucket_count,
-                "total_cases_in_scope": f.total_cases_in_scope,
+                "total_cases_in_scope": f.total_count,
                 "observed_share": round(f.observed_share, 4),
                 "expected_share": round(f.expected_share_under_uniform, 4),
-                "excess_ratio": round(f.observed_share / f.expected_share_under_uniform, 2),
-                "narration": narration_text,
+                "excess_ratio": excess_ratio,
+                "narration": narration_obj.narration,
             }
         )
 

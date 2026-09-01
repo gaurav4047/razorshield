@@ -1,5 +1,7 @@
 # Documentation / Planning
 docs/
+DESIGN_*.md
+frontend/DESIGN_*.md
 
 # Environments & Secrets
 .env

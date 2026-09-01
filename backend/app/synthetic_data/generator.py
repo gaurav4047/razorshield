@@ -309,7 +309,9 @@ def generate_module_c_orders(batch_id: uuid.UUID, counts: dict[str, int], now_dt
     return orders
 
 
-async def generate_batch(db: AsyncSession, label: str | None = None) -> Batch:
+async def generate_batch(db: AsyncSession, label: str | None = None, seed: int | None = None) -> Batch:
+    if seed is not None:
+        random.seed(seed)
     now_dt = datetime.now(timezone.utc)
     batch_label = label or f"Demo Batch {now_dt.strftime('%Y-%m-%d %H:%M:%S')}"
 

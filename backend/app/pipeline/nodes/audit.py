@@ -165,6 +165,13 @@ async def audit_node(state: PipelineState) -> dict:
         await db.refresh(audit_entry)
         audit_id = audit_entry.id
 
+        # Live WebSocket broadcast per 01_architecture.md §3 and 07_frontend_dashboard.md §6
+        try:
+            from app.api.routes.audit import audit_manager, serialize_audit_entry
+            await audit_manager.broadcast(serialize_audit_entry(audit_entry))
+        except Exception:
+            pass
+
     return {
         "audit_entry_id": audit_id,
     }

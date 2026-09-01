@@ -236,3 +236,175 @@ async def approve_invoice_rung4_legal(
         "final_decision": final_state.get("final_decision"),
         "audit_entry_id": final_state.get("audit_entry_id"),
     }
+
+
+@router.post("/{module}/{case_id}/create-link", status_code=200)
+async def generate_case_payment_link(
+    module: str,
+    case_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.razorpay_client.client import create_payment_link
+
+    module = module.upper()
+    amount_paise = 0
+    ref_id = ""
+    description = ""
+    customer_name = ""
+    customer_email = "customer@example.com"
+    customer_contact = "+919319841600"
+
+    if module == "A":
+        pc = await db.scalar(select(PaymentCase).where(PaymentCase.id == case_id))
+        if not pc:
+            raise HTTPException(status_code=404, detail="PaymentCase not found")
+        if pc.status == PaymentCaseStatus.CLOSED_UNRECOVERED:
+            raise HTTPException(status_code=400, detail="Cannot generate link for unrecoverable hard decline case")
+        amount_paise = pc.amount_paise
+        ref_id = f"ref_a_{str(pc.id)[:8]}"
+        description = f"Subscription Recovery: Case {str(pc.id)[:8]}"
+        customer_name = "Sarthak Test Customer"
+        target_obj = pc
+
+    elif module == "B":
+        inv = await db.scalar(select(Invoice).where(Invoice.id == case_id))
+        if not inv:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        if inv.dispute_flag:
+            raise HTTPException(status_code=400, detail="Cannot generate link for disputed invoice under Rule 6")
+        amount_paise = inv.amount_paise
+        ref_id = inv.invoice_number
+        description = f"Invoice Settlement: {inv.invoice_number}"
+        customer_name = inv.buyer_name
+        customer_email = inv.buyer_email or "buyer@example.com"
+        customer_contact = inv.buyer_contact or "+919319841600"
+        target_obj = inv
+
+    elif module == "C":
+        order = await db.scalar(select(AbandonedOrder).where(AbandonedOrder.id == case_id))
+        if not order:
+            raise HTTPException(status_code=404, detail="AbandonedOrder not found")
+        if order.status == AbandonedOrderStatus.SKIPPED_LOW_VALUE:
+            raise HTTPException(status_code=400, detail="Cannot generate link for sub-₹200 order under Rule 12")
+        amount_paise = order.amount_paise
+        ref_id = f"ref_c_{str(order.id)[:8]}"
+        description = f"Cart Recovery Nudge: Order {str(order.id)[:8]}"
+        customer_name = "Priya Sharma"
+        customer_contact = order.customer_contact or "+919319841600"
+        target_obj = order
+
+    if target_obj.razorpay_payment_link_id:
+        return {
+            "status": "existing",
+            "module": module,
+            "case_id": str(case_id),
+            "payment_link_id": target_obj.razorpay_payment_link_id,
+            "short_url": f"https://rzp.io/i/{target_obj.razorpay_payment_link_id.replace('plink_', '')}",
+            "amount_paise": amount_paise,
+            "amount_inr": amount_paise / 100.0,
+        }
+
+    try:
+        plink = await create_payment_link(
+            amount_paise=amount_paise,
+            reference_id=ref_id,
+            description=description,
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_contact=customer_contact,
+            notes={"case_id": str(case_id), "module": module},
+        )
+        target_obj.razorpay_payment_link_id = plink["id"]
+        await db.commit()
+
+        return {
+            "status": "created",
+            "module": module,
+            "case_id": str(case_id),
+            "payment_link_id": plink["id"],
+            "short_url": plink["short_url"],
+            "amount_paise": amount_paise,
+            "amount_inr": amount_paise / 100.0,
+        }
+    except Exception as exc:
+        err_msg = str(exc)
+        if "400" in err_msg or "limit" in err_msg.lower():
+            raise HTTPException(
+                status_code=429,
+                detail="Razorpay Test Mode limit reached (max 30 active links in sandbox). You can simulate the signed webhook event.",
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to create Razorpay link: {err_msg}")
+
+
+@router.post("/{module}/{case_id}/simulate-webhook", status_code=200)
+async def simulate_case_webhook(
+    module: str,
+    case_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.api.routes.webhooks import process_webhook_recovery
+    from app.db.models.webhook_event import RawWebhookEvent
+
+    module = module.upper()
+    payment_id = f"pay_sim_{uuid.uuid4().hex[:12]}"
+    amount_paise = 0
+
+    if module == "A":
+        pc = await db.scalar(select(PaymentCase).where(PaymentCase.id == case_id))
+        if not pc:
+            raise HTTPException(status_code=404, detail="PaymentCase not found")
+        amount_paise = pc.amount_paise
+        ref_id = f"ref_a_{str(pc.id)[:8]}"
+    elif module == "B":
+        inv = await db.scalar(select(Invoice).where(Invoice.id == case_id))
+        if not inv:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        amount_paise = inv.amount_paise
+        ref_id = inv.invoice_number
+    elif module == "C":
+        order = await db.scalar(select(AbandonedOrder).where(AbandonedOrder.id == case_id))
+        if not order:
+            raise HTTPException(status_code=404, detail="AbandonedOrder not found")
+        amount_paise = order.amount_paise
+        ref_id = f"ref_c_{str(order.id)[:8]}"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid module")
+
+    payload = {
+        "event": "payment.captured",
+        "entity": "event",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": payment_id,
+                    "amount": amount_paise,
+                    "status": "captured",
+                    "method": "upi",
+                    "notes": {"case_id": str(case_id), "module": module},
+                }
+            }
+        },
+    }
+
+    raw_event = RawWebhookEvent(
+        razorpay_event_id=f"evt_{payment_id}",
+        event_type="payment.captured",
+        signature_verified=True,
+        processed=True,
+        payload=payload,
+    )
+    db.add(raw_event)
+    await db.commit()
+
+    recovery_info = await process_webhook_recovery(payload, db)
+    await db.commit()
+
+    return {
+        "status": "recovered",
+        "module": module,
+        "case_id": str(case_id),
+        "simulated_payment_id": payment_id,
+        "amount_inr": amount_paise / 100.0,
+        "recovery": recovery_info,
+    }
+

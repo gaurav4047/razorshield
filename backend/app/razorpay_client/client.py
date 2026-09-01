@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from typing import Any
 import httpx
@@ -46,12 +47,20 @@ async def create_payment_link(
         if first_min_partial_amount:
             payload["first_min_partial_amount"] = first_min_partial_amount
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            f"{RAZORPAY_API_BASE}/payment_links",
-            json=payload,
-            headers=_get_auth_headers(),
-        )
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        for attempt in range(6):
+            resp = await client.post(
+                f"{RAZORPAY_API_BASE}/payment_links",
+                headers=_get_auth_headers(),
+                json=payload,
+            )
+            if resp.status_code == 429:
+                wait_s = 12.0 * (attempt + 1)
+                print(f"      [Razorpay Rate Limit] 429 received. Pausing {wait_s:.0f}s for gateway quota refresh (attempt {attempt+1}/6)...", flush=True)
+                await asyncio.sleep(wait_s)
+                continue
+            resp.raise_for_status()
+            return resp.json()
         resp.raise_for_status()
         return resp.json()
 

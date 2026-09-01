@@ -50,6 +50,20 @@ def get_simulated_buyer_reply(archetype: str, amount_inr: float = 50000.0) -> st
     return None
 
 
+def should_settle_at_rung(archetype: str, current_rung: int, is_second_chance_case: bool = False) -> bool:
+    """Evaluates whether an archetype settles at the current escalation rung."""
+    if archetype == "pays_immediately_no_nudge_needed" and current_rung == 0:
+        return True
+    if archetype == "pays_after_reminder_1" and current_rung == 1:
+        return True
+    if archetype == "promise_then_keeps_it" and current_rung in (1, 2):
+        return True
+    # Second-chance recovery at Rung 3 grounded in MSME Samadhaan pre-hearing data
+    if is_second_chance_case and current_rung == 3 and archetype in ("promise_then_break", "silent_ghost"):
+        return True
+    return False
+
+
 async def trigger_live_payment_link_recovery(
     amount_paise: int,
     reference_id: str,
@@ -58,8 +72,7 @@ async def trigger_live_payment_link_recovery(
     customer_email: str = "customer@example.com",
     customer_contact: str = "+919876543210",
 ) -> dict[str, Any]:
-    # Calls real api.razorpay.com/v1/payment_links with test credentials
-    plink = await create_payment_link(
+    return await create_payment_link(
         amount_paise=amount_paise,
         reference_id=reference_id,
         description=description,
@@ -67,4 +80,3 @@ async def trigger_live_payment_link_recovery(
         customer_email=customer_email,
         customer_contact=customer_contact,
     )
-    return plink
