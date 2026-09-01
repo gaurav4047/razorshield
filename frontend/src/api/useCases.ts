@@ -2,17 +2,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchApi } from "./client";
 import { AbandonedOrder, Invoice, PaymentCase } from "@/types/api";
 
-export function useCases(module: "A" | "B" | "C", status?: string) {
+export function useCases(module: "A" | "B" | "C", batchId?: string | null, status?: string) {
   return useQuery({
-    queryKey: ["cases", module, status],
-    queryFn: () => {
+    queryKey: ["cases", module, batchId, status],
+    queryFn: async () => {
       const queryParams = new URLSearchParams({ module });
-      if (status && status !== "ALL") queryParams.append("status", status);
-      return fetchApi<PaymentCase[] | Invoice[] | AbandonedOrder[]>(`/api/cases?${queryParams.toString()}`);
+      if (batchId) queryParams.append("batch_id", batchId);
+      if (status && status !== "ALL") queryParams.append("status", status.toLowerCase());
+      const res = await fetchApi<{ count: number; cases: any[] } | any[]>(
+        `/api/cases?${queryParams.toString()}`
+      );
+      const items = Array.isArray(res) ? res : res?.cases || [];
+      return items as PaymentCase[] | Invoice[] | AbandonedOrder[];
     },
     refetchInterval: 5000,
   });
 }
+
 
 export function useCaseDetail(module: "A" | "B" | "C", caseId: string) {
   return useQuery({

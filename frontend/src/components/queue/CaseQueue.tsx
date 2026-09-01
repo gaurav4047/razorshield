@@ -20,12 +20,13 @@ interface CaseQueueProps {
   batchId?: string | null;
 }
 
-export default function CaseQueue({ module }: CaseQueueProps) {
+export default function CaseQueue({ module, batchId }: CaseQueueProps) {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  const { data: cases, isLoading, refetch, isFetching } = useCases(module);
+  const { data: cases, isLoading, refetch, isFetching } = useCases(module, batchId);
+
 
   // Status Filter Options per Module
   const filterOptions = useMemo(() => {

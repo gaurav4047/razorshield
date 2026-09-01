@@ -154,26 +154,40 @@ export interface UnrecoveredExceptionItem {
 
 export interface ExceptionsBreakdown {
   low_value_floor_skipped: number;
-  dispute_halted: number;
-  hard_declines_closed: number;
-  pending_human_approval: number;
+  disputed_invoices_halted?: number;
+  dispute_halted?: number;
+  hard_declines_halted?: number;
+  hard_declines_closed?: number;
+  samadhaan_filing_pending?: number;
+  pending_human_approval?: number;
 }
-
 
 export interface BatchSummary {
   batch_id: string;
-  total_at_risk_paise: number;
-  gross_recovered_paise: number;
-  net_recovered_paise: number;
-  recovery_rate_pct: number;
+  label?: string;
   total_cases: number;
-  recovered_cases: number;
-  partially_paid_cases: number;
-  partially_paid_recovered_paise: number;
+  total_at_risk_paise: number;
+  total_at_risk_inr?: number;
+  gross_recovered_paise: number;
+  gross_recovered_inr?: number;
+  mdr_fees_paise?: number;
+  gst_on_mdr_paise?: number;
+  net_recovered_paise: number;
+  net_recovered_inr?: number;
+  total_interest_accrued_paise?: number;
+  total_interest_accrued_inr?: number;
+  recovery_rate?: number;
+  recovery_rate_pct?: number;
+  partially_paid_count?: number;
+  partially_paid_cases?: number;
+  partially_paid_amount_paise?: number;
+  partially_paid_recovered_paise?: number;
   exception_count: number;
-  exceptions: UnrecoveredExceptionItem[];
+  exceptions?: UnrecoveredExceptionItem[];
   exceptions_breakdown: ExceptionsBreakdown;
+  modules?: Record<string, { cases: number; at_risk_paise: number; at_risk_inr: number; exceptions: number }>;
 }
+
 
 export interface SystemicPatternFinding {
   grouping_description: string;

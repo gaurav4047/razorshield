@@ -93,6 +93,7 @@ async def list_audit_logs(
     }
 
 
+@router.websocket("")
 @router.websocket("/ws")
 async def audit_websocket_endpoint(websocket: WebSocket, batch_id: str | None = None):
     await audit_manager.connect(websocket)
@@ -104,3 +105,4 @@ async def audit_websocket_endpoint(websocket: WebSocket, batch_id: str | None = 
         audit_manager.disconnect(websocket)
     except Exception:
         audit_manager.disconnect(websocket)
+

@@ -14,13 +14,17 @@ export function useAuditStream(batchId: string | null) {
     let isMounted = true;
 
     // Fetch initial history
-    fetchApi<AuditLogEntry[]>(`/api/audit?batch_id=${batchId}&limit=50`)
-      .then((initialLogs) => {
-        if (isMounted && initialLogs) {
-          setLogs(initialLogs);
+    fetchApi<{ count: number; audit_logs: AuditLogEntry[] } | AuditLogEntry[]>(
+      `/api/audit?batch_id=${batchId}&limit=50`
+    )
+      .then((res) => {
+        if (isMounted && res) {
+          const items = Array.isArray(res) ? res : res.audit_logs || [];
+          setLogs(items);
         }
       })
       .catch((err) => console.error("Failed to fetch initial audit logs", err));
+
 
     const wsUrl = `${WS_BASE_URL}/ws/audit?batch_id=${batchId}`;
     let ws: WebSocket | null = null;
