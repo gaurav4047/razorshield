@@ -66,6 +66,7 @@ export interface Invoice {
   created_at: string;
   updated_at: string;
   promises?: InvoicePromise[];
+  audit_logs?: AuditLogEntry[];
 }
 
 export interface PaymentCase {
@@ -93,6 +94,7 @@ export interface PaymentCase {
   razorpay_payment_link_id: string | null;
   created_at: string;
   updated_at: string;
+  audit_logs?: AuditLogEntry[];
 }
 
 export interface AbandonedOrder {
@@ -112,7 +114,9 @@ export interface AbandonedOrder {
   status: AbandonedOrderStatus;
   created_at: string;
   updated_at: string;
+  audit_logs?: AuditLogEntry[];
 }
+
 
 export interface StoppingRuleCheck {
   rule: string;

@@ -95,14 +95,19 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
     }
   };
 
-  // Settlement Calculation Breakdown (2% MDR + 18% GST)
+  // Extract Primary Audit Log Entry & Computed Settlement
+  const latestAudit = (caseDetail as any).audit_logs?.[0];
+  const stoppingRules = latestAudit?.stopping_rules_checked || [];
+  const aiReasoning = latestAudit?.ai_reasoning_text || (caseDetail as any).ai_reasoning_text;
   const amountPaise = caseDetail.amount_paise || 0;
-  const mdrPaise = Math.round(amountPaise * 0.02);
-  const gstPaise = Math.round(mdrPaise * 0.18);
-  const netPaise = amountPaise - mdrPaise - gstPaise;
+  const grossPaise = latestAudit?.gross_amount_paise || amountPaise;
+  const mdrPaise = latestAudit?.mdr_paise || Math.round(grossPaise * 0.02);
+  const gstPaise = latestAudit?.gst_on_mdr_paise || Math.round(mdrPaise * 0.18);
+  const netPaise = latestAudit?.net_amount_paise || (grossPaise - mdrPaise - gstPaise);
 
   const paymentLinkId = caseDetail.razorpay_payment_link_id;
   const checkoutUrl = paymentLinkId ? `https://rzp.io/i/${paymentLinkId.replace("plink_", "")}` : null;
+
 
   return (
     <Dialog open={true} onOpenChange={() => onClose()}>
@@ -254,17 +259,9 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
 
           {/* 3. AI vs Rule Disagreement Card */}
           <AiVsRuleDisagreement
-            ruleSuggestedAction={
-              "fault_attribution" in caseDetail && caseDetail.fault_attribution === "customer_fault" && caseDetail.attempt_number > 2
-                ? "silent_retry"
-                : null
-            }
-            finalAction={(caseDetail as any).recommended_intervention || (caseDetail as any).status}
-            aiReasoningText={
-              "classified_root_cause" in caseDetail && caseDetail.classified_root_cause === "insufficient_balance"
-                ? "Customer has 18 months of clean payment history. Diagnosis indicates a transient month-end liquidity dip. Rescheduling delayed nudge aligns with upcoming salary cycle."
-                : null
-            }
+            ruleSuggestedAction={latestAudit?.rule_suggested_action || null}
+            finalAction={latestAudit?.final_action || (caseDetail as any).recommended_intervention || (caseDetail as any).status}
+            aiReasoningText={aiReasoning || null}
           />
 
           {/* 4. MSMED Section 16 Live Interest (Module B) */}
@@ -283,47 +280,62 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
-              <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
-                <span className="text-slate-700 font-medium">Rule 1: Hard Decline Never Retry</span>
-                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
-              </div>
-
-              <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
-                <span className="text-slate-700 font-medium">Rule 2: NPCI Peak Window Block</span>
-                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
-              </div>
-
-              <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
-                <span className="text-slate-700 font-medium">Rule 6: Dispute Immediate Halt</span>
-                {"dispute_flag" in caseDetail && caseDetail.dispute_flag ? (
-                  <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[10px]">HALTED</Badge>
-                ) : (
-                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
-                <span className="text-slate-700 font-medium">Rule 11: Single Nudge Cap</span>
-                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
-              </div>
-
-              <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
-                <span className="text-slate-700 font-medium">Rule 12: Low-Value Floor (&gt;₹200)</span>
-                {amountPaise < 20000 ? (
-                  <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[10px]">FLOOR SKIPPED</Badge>
-                ) : (
-                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
-                <span className="text-slate-700 font-medium">Rule 10: Human Gate Before Samadhaan</span>
-                {"current_rung" in caseDetail && caseDetail.current_rung === 4 ? (
-                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 text-[10px]">SIGN-OFF REQUIRED</Badge>
-                ) : (
-                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
-                )}
-              </div>
+              {stoppingRules.length > 0 ? (
+                stoppingRules.map((check: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">{check.rule}</span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${
+                        check.passed
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-rose-200 bg-rose-50 text-rose-700"
+                      }`}
+                    >
+                      {check.passed ? "PASS" : "HALTED"}
+                    </Badge>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">Rule 1: Hard Decline Never Retry</span>
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
+                  </div>
+                  <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">Rule 2: NPCI Peak Window Block</span>
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
+                  </div>
+                  <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">Rule 6: Dispute Immediate Halt</span>
+                    {"dispute_flag" in caseDetail && caseDetail.dispute_flag ? (
+                      <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[10px]">HALTED</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">Rule 11: Single Nudge Cap</span>
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
+                  </div>
+                  <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">Rule 12: Low-Value Floor (&gt;₹200)</span>
+                    {amountPaise < 20000 ? (
+                      <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[10px]">FLOOR SKIPPED</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 p-2">
+                    <span className="text-slate-700 font-medium">Rule 10: Human Gate Before Samadhaan</span>
+                    {"current_rung" in caseDetail && caseDetail.current_rung === 4 ? (
+                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 text-[10px]">SIGN-OFF REQUIRED</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">PASS</Badge>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -337,7 +349,7 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs font-mono">
               <div className="bg-white p-2.5 rounded border border-slate-200">
                 <span className="text-slate-500 font-sans block text-[11px]">Gross Amount</span>
-                <span className="font-bold text-slate-900">{formatPaiseToRupees(amountPaise)}</span>
+                <span className="font-bold text-slate-900">{formatPaiseToRupees(grossPaise)}</span>
               </div>
               <div className="bg-white p-2.5 rounded border border-slate-200">
                 <span className="text-slate-500 font-sans block text-[11px]">Platform Fee (2%)</span>
@@ -353,6 +365,7 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
               </div>
             </div>
           </div>
+
         </ScrollArea>
 
         {/* Footer Actions */}

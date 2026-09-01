@@ -186,11 +186,18 @@ export default function CaseQueueRow({ module, item, onClick }: CaseQueueRowProp
               )}
             </div>
           </TableCell>
-          <TableCell className="font-mono font-semibold tabular-nums text-slate-900">
-            {formatPaiseToRupees(item.amount_paise)}
+          <TableCell className="font-mono tabular-nums">
+            <span className="font-semibold text-slate-900 block">
+              {formatPaiseToRupees(item.amount_paise)}
+            </span>
             {item.amount_paid_paise > 0 && item.amount_paid_paise < item.amount_paise && (
               <div className="text-[10px] text-emerald-600 font-mono">
                 Paid: {formatPaiseToRupees(item.amount_paid_paise)}
+              </div>
+            )}
+            {item.supplier_is_msme && item.status === "overdue" && (
+              <div className="text-[10px] text-amber-700 font-medium font-mono">
+                +{formatPaiseToRupees(item.computed_interest_paise || Math.round(item.amount_paise * 0.0506))} interest
               </div>
             )}
           </TableCell>
@@ -202,6 +209,7 @@ export default function CaseQueueRow({ module, item, onClick }: CaseQueueRowProp
           </TableCell>
         </>
       )}
+
 
       {/* MODULE C: Abandoned Orders */}
       {module === "C" && (
