@@ -18,6 +18,27 @@ export function useBatchSummary(batchId: string | null) {
   });
 }
 
+export function useBatchPattern(batchId: string | null) {
+  return useQuery({
+    queryKey: ["batchPattern", batchId],
+    queryFn: () =>
+      fetchApi<{
+        batch_id: string;
+        findings: Array<{
+          grouping_description: string;
+          bucket_count: number;
+          total_count: number;
+          observed_share: number;
+          expected_share: number;
+          anomaly_ratio: number;
+          narration: string;
+        }>;
+      }>(`/api/batches/${batchId}/pattern`),
+    enabled: Boolean(batchId),
+    staleTime: 60000,
+  });
+}
+
 export function useRunBatch() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -25,8 +46,10 @@ export function useRunBatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["batchSummary"] });
+      queryClient.invalidateQueries({ queryKey: ["batchPattern"] });
       queryClient.invalidateQueries({ queryKey: ["cases"] });
       queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });
 }
+

@@ -148,12 +148,36 @@ export interface UnrecoveredExceptionItem {
   amount_paise: number;
 }
 
+export interface ExceptionsBreakdown {
+  low_value_floor_skipped: number;
+  dispute_halted: number;
+  hard_declines_closed: number;
+  pending_human_approval: number;
+}
+
+
 export interface BatchSummary {
   batch_id: string;
   total_at_risk_paise: number;
   gross_recovered_paise: number;
   net_recovered_paise: number;
   recovery_rate_pct: number;
+  total_cases: number;
+  recovered_cases: number;
+  partially_paid_cases: number;
+  partially_paid_recovered_paise: number;
   exception_count: number;
   exceptions: UnrecoveredExceptionItem[];
+  exceptions_breakdown: ExceptionsBreakdown;
 }
+
+export interface SystemicPatternFinding {
+  grouping_description: string;
+  bucket_count: number;
+  total_count: number;
+  observed_share: number;
+  expected_share: number;
+  anomaly_ratio: number;
+  narration: string;
+}
+
