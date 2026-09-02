@@ -106,7 +106,16 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
   const netPaise = latestAudit?.net_amount_paise || (grossPaise - mdrPaise - gstPaise);
 
   const paymentLinkId = caseDetail.razorpay_payment_link_id;
-  const checkoutUrl = paymentLinkId ? `https://rzp.io/i/${paymentLinkId.replace("plink_", "")}` : null;
+  const isRealRazorpayLink = Boolean(
+    paymentLinkId &&
+      !paymentLinkId.startsWith("plink_alt_") &&
+      !paymentLinkId.startsWith("plink_inv_") &&
+      !paymentLinkId.startsWith("plink_nudge_")
+  );
+  const checkoutUrl = isRealRazorpayLink && paymentLinkId
+    ? `https://rzp.io/i/${paymentLinkId.replace("plink_", "")}`
+    : null;
+
 
 
   return (

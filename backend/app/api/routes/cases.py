@@ -293,7 +293,13 @@ async def generate_case_payment_link(
         customer_contact = order.customer_contact or "+919319841600"
         target_obj = order
 
-    if target_obj.razorpay_payment_link_id:
+    has_real_link = (
+        target_obj.razorpay_payment_link_id
+        and not target_obj.razorpay_payment_link_id.startswith("plink_alt_")
+        and not target_obj.razorpay_payment_link_id.startswith("plink_inv_")
+        and not target_obj.razorpay_payment_link_id.startswith("plink_nudge_")
+    )
+    if has_real_link:
         return {
             "status": "existing",
             "module": module,
@@ -303,6 +309,7 @@ async def generate_case_payment_link(
             "amount_paise": amount_paise,
             "amount_inr": amount_paise / 100.0,
         }
+
 
     try:
         plink = await create_payment_link(

@@ -150,15 +150,19 @@ export default function CaseQueueRow({ module, item, onClick }: CaseQueueRowProp
             )}
           </TableCell>
           <TableCell className="text-xs">
-            {item.razorpay_payment_link_id ? (
-              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                <Zap className="h-3 w-3 text-blue-500" />
+            {item.razorpay_payment_link_id &&
+            !item.razorpay_payment_link_id.startsWith("plink_alt_") &&
+            !item.razorpay_payment_link_id.startsWith("plink_inv_") &&
+            !item.razorpay_payment_link_id.startsWith("plink_nudge_") ? (
+              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                <Zap className="h-3 w-3 text-emerald-600" />
                 Active Link
               </span>
             ) : (
-              <span className="text-slate-400 font-mono text-[11px]">No link</span>
+              <span className="text-slate-400 font-mono text-[11px]">Ready to Generate</span>
             )}
           </TableCell>
+
           <TableCell className="text-right">
             {getStatusBadge(item.status)}
           </TableCell>
