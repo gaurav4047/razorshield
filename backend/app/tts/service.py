@@ -107,13 +107,41 @@ def generate_hinglish_script(module: str, case_data: dict[str, Any]) -> str:
     return "Namaste, aapka payment recovery notice send kiya gaya hai. Kripya attached Razorpay link se complete karein."
 
 
+import base64
+import os
+
+AUDIO_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "storage", "audio")
+os.makedirs(AUDIO_STORAGE_DIR, exist_ok=True)
+
+
+def get_stored_audio_info(module: str, case_id: str, speaker: str) -> dict[str, str] | None:
+    filename = f"{module.lower()}_{str(case_id)}_{speaker}.wav"
+    file_path = os.path.join(AUDIO_STORAGE_DIR, filename)
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        return {
+            "filename": filename,
+            "audio_url": f"/audio/{filename}",
+            "file_path": file_path,
+        }
+    return None
+
+
+def save_audio_to_storage(module: str, case_id: str, speaker: str, base64_data: str) -> str:
+    filename = f"{module.lower()}_{str(case_id)}_{speaker}.wav"
+    file_path = os.path.join(AUDIO_STORAGE_DIR, filename)
+    audio_bytes = base64.b64decode(base64_data)
+    with open(file_path, "wb") as f:
+        f.write(audio_bytes)
+    return f"/audio/{filename}"
+
+
 async def synthesize_hinglish_voice(
     text: str,
     speaker: str = "priya",
     pace: float = 1.0,
+    module: str | None = None,
+    case_id: str | None = None,
 ) -> dict[str, Any]:
-
-
     if not settings.SARVAM_API_KEY:
         raise ValueError("SARVAM_API_KEY is not configured in environment settings")
 
@@ -130,7 +158,6 @@ async def synthesize_hinglish_voice(
         "speech_sample_rate": 24000,
     }
 
-
     async with httpx.AsyncClient(timeout=25.0) as client:
         resp = await client.post(SARVAM_TTS_URL, headers=headers, json=payload)
         if resp.status_code != 200:
@@ -141,10 +168,17 @@ async def synthesize_hinglish_voice(
         if not audios:
             raise ValueError("No audio returned from Sarvam TTS API")
 
+        base64_audio = audios[0]
+        audio_url = None
+        if module and case_id:
+            audio_url = save_audio_to_storage(module, str(case_id), speaker, base64_audio)
+
         return {
             "status": "success",
-            "audio_base64": audios[0],
+            "audio_base64": base64_audio,
+            "audio_url": audio_url,
             "text": text,
             "speaker": speaker,
             "mime_type": "audio/wav",
         }
+

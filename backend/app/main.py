@@ -1,9 +1,14 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import audit, batch, cases, webhooks
 from app.scheduler.jobs import start_scheduler, stop_scheduler
+
+AUDIO_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "storage", "audio")
+os.makedirs(AUDIO_STORAGE_DIR, exist_ok=True)
 
 
 @asynccontextmanager
@@ -37,7 +42,11 @@ app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/ws/audit", tags=["ws-audit"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 
+# Mount static audio files storage
+app.mount("/audio", StaticFiles(directory=AUDIO_STORAGE_DIR), name="audio")
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+

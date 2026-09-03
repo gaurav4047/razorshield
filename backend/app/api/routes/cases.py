@@ -477,26 +477,40 @@ async def get_case_voice_nudge(
     else:
         raise HTTPException(status_code=400, detail="Invalid module")
 
+    from app.tts.service import (
+        draft_dynamic_hinglish_voice_script,
+        get_stored_audio_info,
+        synthesize_hinglish_voice,
+    )
+
     script = await draft_dynamic_hinglish_voice_script(module, case_data)
+    stored_info = get_stored_audio_info(module, str(case_id), speaker)
+    audio_url = stored_info["audio_url"] if stored_info else None
     audio_base64 = None
-
-
 
     if synthesize:
         try:
-            tts_res = await synthesize_hinglish_voice(script, speaker=speaker)
+            tts_res = await synthesize_hinglish_voice(
+                script,
+                speaker=speaker,
+                module=module,
+                case_id=str(case_id),
+            )
             audio_base64 = tts_res["audio_base64"]
+            audio_url = tts_res["audio_url"] or audio_url
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Sarvam TTS Error: {str(exc)}")
 
     return {
-        "status": "ready" if not synthesize else "synthesized",
+        "status": "synthesized" if audio_url else "ready",
         "can_generate": True,
         "module": module,
         "case_id": str(case_id),
         "script_text": script,
+        "audio_url": audio_url,
         "audio_base64": audio_base64,
         "speaker": speaker,
     }
+
 
 

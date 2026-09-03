@@ -24,6 +24,7 @@ interface VoiceNudgeResponse {
   module: string;
   case_id: string;
   script_text: string | null;
+  audio_url: string | null;
   audio_base64: string | null;
   speaker: string;
 }
@@ -34,17 +35,17 @@ export default function VoiceNudgePlayer({ module, caseId }: VoiceNudgePlayerPro
   const [speaker, setSpeaker] = useState<string>("priya");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
-
-
   // 1. Fetch initial script and policy status
   const { data: initialData, isLoading } = useQuery<VoiceNudgeResponse>({
-    queryKey: ["voice-nudge", module, caseId],
+    queryKey: ["voice-nudge", module, caseId, speaker],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/cases/${module}/${caseId}/voice-nudge?synthesize=false`);
+      const res = await fetch(`${API_BASE}/api/cases/${module}/${caseId}/voice-nudge?synthesize=false&speaker=${speaker}`);
       if (!res.ok) throw new Error("Failed to load voice nudge details");
       return res.json();
     },
   });
+
+  const currentAudioUrl = audioUrl || (initialData?.audio_url ? `${API_BASE}${initialData.audio_url}` : null);
 
   // 2. Synthesize audio mutation
   const synthesizeMutation = useMutation({
@@ -59,11 +60,14 @@ export default function VoiceNudgePlayer({ module, caseId }: VoiceNudgePlayerPro
       return res.json() as Promise<VoiceNudgeResponse>;
     },
     onSuccess: (data) => {
-      if (data.audio_base64) {
+      if (data.audio_url) {
+        setAudioUrl(`${API_BASE}${data.audio_url}`);
+      } else if (data.audio_base64) {
         setAudioUrl(`data:audio/wav;base64,${data.audio_base64}`);
       }
     },
   });
+
 
   if (isLoading) {
     return (
@@ -148,9 +152,10 @@ export default function VoiceNudgePlayer({ module, caseId }: VoiceNudgePlayerPro
 
       {/* Audio Playback Controls */}
       <div className="mt-3 pt-2.5 border-t border-indigo-100/70 flex flex-wrap items-center justify-between gap-2">
-        {audioUrl ? (
+        {currentAudioUrl ? (
           <div className="flex flex-1 items-center gap-3">
-            <audio controls autoPlay src={audioUrl} className="h-8 w-full max-w-md rounded-md" />
+            <audio controls autoPlay src={currentAudioUrl} className="h-8 w-full max-w-md rounded-md" />
+
             <Button
               variant="outline"
               size="sm"
