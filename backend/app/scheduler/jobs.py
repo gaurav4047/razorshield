@@ -21,33 +21,37 @@ async def check_module_b_invoices():
     now_date = date.today()
     async with async_session_factory() as db:
         res = await db.execute(
-            select(Invoice).where(
+            select(Invoice.id, Invoice.current_rung, Invoice.statutory_due_date, Invoice.invoice_date).where(
                 Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.OVERDUE]),
                 Invoice.dispute_flag == False,
             )
         )
-        invoices = res.scalars().all()
+        invoice_rows = res.all()
 
-        for inv in invoices:
-            statutory_due = inv.statutory_due_date or inv.invoice_date
-            if not statutory_due:
-                continue
+    for inv_id, current_rung, statutory_due, invoice_date in invoice_rows:
+        due_date = statutory_due or invoice_date
+        if not due_date:
+            continue
 
-            days_overdue = (now_date - statutory_due).days
-            target_rung = inv.current_rung
+        days_overdue = (now_date - due_date).days
+        target_rung = current_rung
 
-            if days_overdue >= 0 and inv.current_rung == 0:
-                target_rung = 1
-            elif days_overdue >= 7 and inv.current_rung == 1:
-                target_rung = 2
-            elif days_overdue >= 14 and inv.current_rung == 2:
-                target_rung = 3
-            elif days_overdue >= 30 and inv.current_rung == 3:
-                target_rung = 4
+        if days_overdue >= 0 and current_rung == 0:
+            target_rung = 1
+        elif days_overdue >= 7 and current_rung == 1:
+            target_rung = 2
+        elif days_overdue >= 14 and current_rung == 2:
+            target_rung = 3
+        elif days_overdue >= 30 and current_rung == 3:
+            target_rung = 4
 
-            if target_rung > inv.current_rung:
-                logger.info(f"Scheduler: Advancing Invoice {inv.id} from Rung {inv.current_rung} to {target_rung}")
-                await run_pipeline_for_invoice(invoice_id=inv.id, db=db)
+        if target_rung > current_rung:
+            logger.info(f"Scheduler: Advancing Invoice {inv_id} from Rung {current_rung} to {target_rung}")
+            try:
+                async with async_session_factory() as case_db:
+                    await run_pipeline_for_invoice(invoice_id=inv_id, db=case_db)
+            except Exception as e:
+                logger.error(f"Scheduler error processing invoice {inv_id}: {e}")
 
 
 async def check_module_c_orders():
@@ -55,17 +59,21 @@ async def check_module_c_orders():
     cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=30)
     async with async_session_factory() as db:
         res = await db.execute(
-            select(AbandonedOrder).where(
+            select(AbandonedOrder.id).where(
                 AbandonedOrder.status == AbandonedOrderStatus.OPEN,
                 AbandonedOrder.order_created_at <= cutoff_time,
                 AbandonedOrder.nudge_sent == False,
             )
         )
-        orders = res.scalars().all()
+        order_ids = res.scalars().all()
 
-        for o in orders:
-            logger.info(f"Scheduler: Processing Abandoned Order {o.id}")
-            await run_pipeline_for_order(order_id=o.id, db=db)
+    for o_id in order_ids:
+        logger.info(f"Scheduler: Processing Abandoned Order {o_id}")
+        try:
+            async with async_session_factory() as case_db:
+                await run_pipeline_for_order(order_id=o_id, db=case_db)
+        except Exception as e:
+            logger.error(f"Scheduler error processing order {o_id}: {e}")
 
 
 async def check_module_a_retries():
@@ -74,17 +82,22 @@ async def check_module_a_retries():
     cutoff_time = now_utc - timedelta(hours=48)
     async with async_session_factory() as db:
         res = await db.execute(
-            select(PaymentCase).where(
+            select(PaymentCase.id).where(
                 PaymentCase.status == PaymentCaseStatus.OPEN,
                 PaymentCase.recommended_intervention == "delayed_retry_notify",
                 PaymentCase.last_action_at <= cutoff_time,
             )
         )
-        cases = res.scalars().all()
+        case_ids = res.scalars().all()
 
-        for pc in cases:
-            logger.info(f"Scheduler: Retrying PaymentCase {pc.id}")
-            await run_pipeline_for_payment_case(case_id=pc.id, db=db)
+    for pc_id in case_ids:
+        logger.info(f"Scheduler: Retrying PaymentCase {pc_id}")
+        try:
+            async with async_session_factory() as case_db:
+                await run_pipeline_for_payment_case(case_id=pc_id, db=case_db)
+        except Exception as e:
+            logger.error(f"Scheduler error retrying payment case {pc_id}: {e}")
+
 
 
 async def scheduler_loop(interval_seconds: int = 15):
