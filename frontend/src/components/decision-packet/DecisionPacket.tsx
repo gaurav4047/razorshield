@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useCaseDetail, useGenerateLink, useSimulateWebhook, useApproveRung4 } from "@/api/useCases";
 import { formatPaiseToRupees } from "@/lib/utils";
 import AiVsRuleDisagreement from "./AiVsRuleDisagreement";
+import VoiceNudgePlayer from "./VoiceNudgePlayer";
 import InterestAccrualCounter from "@/components/receivables/InterestAccrualCounter";
+
 import { 
   Dialog, 
   DialogContent, 
@@ -264,7 +266,20 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
                 </div>
               )}
             </div>
+
+            {/* Diagnostic Rationale Callout */}
+            {(aiReasoning || latestAudit?.reason) && (
+              <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/40 p-2.5 text-xs text-slate-700">
+                <span className="font-semibold text-blue-900 block text-[11px] uppercase tracking-wider mb-0.5">
+                  Diagnostic Rationale:
+                </span>
+                <p className="leading-relaxed italic text-slate-800">
+                  "{aiReasoning || latestAudit?.reason}"
+                </p>
+              </div>
+            )}
           </div>
+
 
           {/* 3. AI vs Rule Disagreement Card */}
           <AiVsRuleDisagreement
@@ -273,10 +288,14 @@ export default function DecisionPacket({ module, caseId, onClose }: DecisionPack
             aiReasoningText={aiReasoning || null}
           />
 
-          {/* 4. MSMED Section 16 Live Interest (Module B) */}
+          {/* 4. AI Hinglish Voice Recovery Nudge (Sarvam AI) */}
+          <VoiceNudgePlayer module={module} caseId={caseId} />
+
+          {/* 5. MSMED Section 16 Live Interest (Module B) */}
           {"supplier_is_msme" in caseDetail && (
             <InterestAccrualCounter invoice={caseDetail as any} />
           )}
+
 
           {/* 5. Policy Gate Checklist */}
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xs">

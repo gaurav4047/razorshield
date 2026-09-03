@@ -76,6 +76,26 @@ async def run_pipeline_for_payment_case(
     if not pc:
         raise ValueError(f"PaymentCase with ID {case_id} not found")
 
+    # Automatically query and inject historical context from audit logs if not explicitly passed
+    if not case_history:
+        from app.db.models.audit_log import AuditLogEntry
+        audit_res = await db.execute(
+            select(AuditLogEntry)
+            .where(AuditLogEntry.case_id == case_uuid)
+            .order_by(AuditLogEntry.timestamp.asc())
+        )
+        prior_audits = audit_res.scalars().all()
+        if prior_audits:
+            history_lines = [
+                f"- Attempt {i+1} ({a.timestamp.strftime('%Y-%m-%d %H:%M') if a.timestamp else 'prior'}): action={a.final_action}, reason={a.reason}"
+                for i, a in enumerate(prior_audits)
+            ]
+            case_history = f"Historical attempts on this case:\n" + "\n".join(history_lines)
+        elif pc.retry_count > 0 or pc.attempt_number > 1:
+            case_history = f"Case has {pc.retry_count} prior retries (attempt #{pc.attempt_number})."
+        elif pc.buyer_archetype:
+            case_history = f"Account context: profile classified as {pc.buyer_archetype.replace('_', ' ')}."
+
     initial_state: PipelineState = {
         "module": "A",
         "case_id": str(pc.id),
@@ -83,6 +103,7 @@ async def run_pipeline_for_payment_case(
         "method": pc.method.value,
         "context": pc.context.value,
         "failure_code": pc.failure_code,
+
         "failure_raw_reason": pc.failure_raw_reason,
         "attempt_number": pc.attempt_number,
         "retry_count": pc.retry_count,

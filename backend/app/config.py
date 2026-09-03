@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     RAZORPAY_WEBHOOK_SECRET: str = ""
     GOOGLE_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    SARVAM_API_KEY: str = ""
     APP_BASE_URL: str = "http://localhost:8000"
+
 
     # RBI bank rate per MSMED Act Section 16 (verified 5.50% as of August 2026; re-check at rbi.org.in)
     RBI_BANK_RATE: Decimal = Decimal("5.50")

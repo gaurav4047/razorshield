@@ -415,3 +415,88 @@ async def simulate_case_webhook(
         "recovery": recovery_info,
     }
 
+
+@router.get("/{module}/{case_id}/voice-nudge", status_code=200)
+async def get_case_voice_nudge(
+    module: str,
+    case_id: uuid.UUID,
+    synthesize: bool = Query(False),
+    speaker: str = Query("priya"),
+
+
+    db: AsyncSession = Depends(get_db),
+):
+    from app.tts.service import draft_dynamic_hinglish_voice_script, synthesize_hinglish_voice
+
+    module = module.upper()
+
+    case_data: dict[str, Any] = {}
+
+    if module == "A":
+        pc = await db.scalar(select(PaymentCase).where(PaymentCase.id == case_id))
+        if not pc:
+            raise HTTPException(status_code=404, detail="PaymentCase not found")
+        if pc.status == PaymentCaseStatus.CLOSED_UNRECOVERED:
+            return {
+                "status": "blocked",
+                "can_generate": False,
+                "reason": "Rule 1: Hard decline permanently closed. Automated voice outreach blocked.",
+                "script_text": None,
+                "audio_base64": None,
+            }
+        case_data = serialize_payment_case(pc)
+
+    elif module == "B":
+        inv = await db.scalar(select(Invoice).where(Invoice.id == case_id))
+        if not inv:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        if inv.dispute_flag:
+            return {
+                "status": "blocked",
+                "can_generate": False,
+                "reason": "Rule 6: Active dispute prohibits all automated customer outreach.",
+                "script_text": None,
+                "audio_base64": None,
+            }
+        case_data = serialize_invoice(inv)
+
+    elif module == "C":
+        order = await db.scalar(select(AbandonedOrder).where(AbandonedOrder.id == case_id))
+        if not order:
+            raise HTTPException(status_code=404, detail="AbandonedOrder not found")
+        if order.status == AbandonedOrderStatus.SKIPPED_LOW_VALUE or order.amount_paise < 20000:
+            return {
+                "status": "blocked",
+                "can_generate": False,
+                "reason": "Rule 12: Order amount is below the ₹200 recovery floor. Nudge skipped.",
+                "script_text": None,
+                "audio_base64": None,
+            }
+        case_data = serialize_abandoned_order(order)
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid module")
+
+    script = await draft_dynamic_hinglish_voice_script(module, case_data)
+    audio_base64 = None
+
+
+
+    if synthesize:
+        try:
+            tts_res = await synthesize_hinglish_voice(script, speaker=speaker)
+            audio_base64 = tts_res["audio_base64"]
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Sarvam TTS Error: {str(exc)}")
+
+    return {
+        "status": "ready" if not synthesize else "synthesized",
+        "can_generate": True,
+        "module": module,
+        "case_id": str(case_id),
+        "script_text": script,
+        "audio_base64": audio_base64,
+        "speaker": speaker,
+    }
+
+
