@@ -82,6 +82,7 @@ async def policy_gate_node(state: PipelineState) -> dict:
             supplier_is_msme=supplier_is_msme,
             human_approved=human_approved,
             now=now_dt,
+            recommended_intervention=state.get("recommended_intervention"),
         )
 
         return {

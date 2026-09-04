@@ -287,6 +287,7 @@ def check_module_b_policy_gate(
     supplier_is_msme: bool,
     human_approved: bool = False,
     now: datetime | None = None,
+    recommended_intervention: str | None = None,
 ) -> PolicyGateResult:
     current_now = now or datetime.now(timezone.utc)
     rules_checked: list[StoppingRuleCheck] = []
@@ -294,6 +295,11 @@ def check_module_b_policy_gate(
     final_action = f"rung_{target_rung}_action"
     reason = f"Advanced to rung {target_rung}"
     rule_rec = None
+
+    if recommended_intervention == "record_promise" and broken_promise_count < 3:
+        rule_rec = f"rung_{target_rung}_action"
+        final_action = "promise_grace_period"
+        reason = "Valid debtor payment commitment recorded; escalation ladder paused"
 
     # Rule 6: dispute_halt (MUST be checked first)
     if dispute_flag:
@@ -354,7 +360,7 @@ def check_module_b_policy_gate(
         )
 
     # Rule 8: contact_frequency_cap (7 days)
-    if last_contact_at and (current_now - last_contact_at) < timedelta(days=7):
+    if target_rung > 0 and final_action != "promise_grace_period" and last_contact_at and (current_now - last_contact_at) < timedelta(days=7):
         days_since = (current_now - last_contact_at).total_seconds() / 86400
         rules_checked.append(
             StoppingRuleCheck(
@@ -371,7 +377,7 @@ def check_module_b_policy_gate(
             StoppingRuleCheck(
                 rule="contact_frequency_cap",
                 passed=True,
-                detail="Contact frequency cap passed",
+                detail="Contact frequency cap passed" if final_action != "promise_grace_period" else "Grace period active; no outbound contact dispatched",
             )
         )
 

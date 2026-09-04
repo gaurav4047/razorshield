@@ -5,39 +5,72 @@ from app.ai_layer.model_router import AiTask, get_model_for_task
 from app.config import settings
 
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
+SARVAM_CHAT_URL = "https://api.sarvam.ai/v1/chat/completions"
 
 
 async def draft_dynamic_hinglish_voice_script(module: str, case_data: dict[str, Any]) -> str:
-    # Use AI (Gemini / Groq) to dynamically craft natural Hinglish copy
+    system_prompt = (
+        "You are an expert conversational financial recovery agent in India. "
+        "Draft a 2-sentence polite, concise Hinglish voice script (in Roman/Latin script, e.g. 'Namaste Sarthak ji...') "
+        "for an automated phone audio note.\n"
+        "Requirements:\n"
+        "- Mention the person or business name, the exact amount, and the recovery context.\n"
+        "- State that a secure Razorpay link has been shared to complete the payment.\n"
+        "- Keep the length between 25 and 35 words so audio synthesis is under 15 seconds.\n"
+        "- Output ONLY the spoken text, no quotes, no extra formatting."
+    )
+
+    amount_paise = case_data.get("amount_paise", 0)
+    paid_paise = case_data.get("amount_paid_paise", 0) or 0
+    outstanding_paise = max(0, amount_paise - paid_paise) if paid_paise > 0 else amount_paise
+
+    amount_inr = f"{float(outstanding_paise) / 100:,.2f}"
+
+    if module == "A":
+        method = str(case_data.get("method", "card")).upper()
+        root_cause = str(case_data.get("classified_root_cause") or case_data.get("failure_raw_reason") or "network issue").replace("_", " ")
+        user_content = f"Customer Name: {case_data.get('customer_name', 'Customer')}, Payment Method: {method}, Amount: Rs {amount_inr}, Root Cause: {root_cause}"
+    elif module == "B":
+        interest_paise = case_data.get("computed_interest_paise") or 0
+        interest_inr = f"{float(interest_paise) / 100:,.2f}"
+        balance_desc = f"Outstanding Balance: Rs {amount_inr}" if paid_paise > 0 else f"Principal Amount: Rs {amount_inr}"
+        user_content = (
+            f"Buyer Company: {case_data.get('buyer_name', 'Valued Partner')}, Invoice Number: {case_data.get('invoice_number', 'INV-101')}, "
+            f"{balance_desc}, Statutory MSMED Section 16 Interest: Rs {interest_inr}, Escalation Rung: {case_data.get('current_rung', 1)}"
+        )
+    else:
+        user_content = f"Customer Name: {case_data.get('customer_name', 'Shopper')}, Abandoned Cart Amount: Rs {amount_inr}"
+
+    # 1. Primary: Sarvam AI sarvam-105b-conversations (native Indian conversational LLM)
+    if settings.SARVAM_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                res = await client.post(
+                    SARVAM_CHAT_URL,
+                    headers={
+                        "api-subscription-key": settings.SARVAM_API_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "sarvam-105b-conversations",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content},
+                        ],
+                        "temperature": 0.2,
+                    },
+                )
+                if res.status_code == 200:
+                    content = res.json()["choices"][0]["message"]["content"]
+                    cleaned = str(content).strip().strip('"')
+                    if len(cleaned) > 20:
+                        return cleaned
+        except Exception:
+            pass
+
+    # 2. Secondary fallback: Gemini / Groq router
     try:
         model = get_model_for_task(AiTask.MESSAGE_DRAFTING)
-        system_prompt = (
-            "You are an expert conversational financial recovery agent in India. "
-            "Draft a 2-sentence polite, concise Hinglish voice script (in Roman/Latin script, e.g. 'Namaste Sarthak ji...') "
-            "for an automated phone audio note.\n"
-            "Requirements:\n"
-            "- Mention the person or business name, the exact amount, and the recovery context.\n"
-            "- State that a secure Razorpay link has been shared to complete the payment.\n"
-            "- Keep the length between 25 and 35 words so audio synthesis is under 15 seconds.\n"
-            "- Output ONLY the spoken text, no quotes, no extra formatting."
-        )
-
-        amount_inr = f"{float(case_data.get('amount_paise', 0)) / 100:,.2f}"
-
-        if module == "A":
-            method = str(case_data.get("method", "card")).upper()
-            root_cause = str(case_data.get("classified_root_cause") or case_data.get("failure_raw_reason") or "network issue").replace("_", " ")
-            user_content = f"Customer Name: {case_data.get('customer_name', 'Customer')}, Payment Method: {method}, Amount: Rs {amount_inr}, Root Cause: {root_cause}"
-        elif module == "B":
-            interest_paise = case_data.get("computed_interest_paise") or 0
-            interest_inr = f"{float(interest_paise) / 100:,.2f}"
-            user_content = (
-                f"Buyer Company: {case_data.get('buyer_name', 'Valued Partner')}, Invoice Number: {case_data.get('invoice_number', 'INV-101')}, "
-                f"Principal Amount: Rs {amount_inr}, Statutory MSMED Section 16 Interest: Rs {interest_inr}, Escalation Rung: {case_data.get('current_rung', 1)}"
-            )
-        else:
-            user_content = f"Customer Name: {case_data.get('customer_name', 'Shopper')}, Abandoned Cart Amount: Rs {amount_inr}"
-
         res = await model.ainvoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_content),
@@ -49,8 +82,9 @@ async def draft_dynamic_hinglish_voice_script(module: str, case_data: dict[str, 
     except Exception:
         pass
 
-    # Deterministic fallback if AI API is unreachable
+    # 3. Deterministic template fallback
     return generate_hinglish_script(module, case_data)
+
 
 
 def generate_hinglish_script(module: str, case_data: dict[str, Any]) -> str:
@@ -72,14 +106,23 @@ def generate_hinglish_script(module: str, case_data: dict[str, Any]) -> str:
     elif module == "B":
         buyer_name = case_data.get("buyer_name", "Valued Partner")
         invoice_num = case_data.get("invoice_number", "INV-101")
-        amount_inr = f"{float(case_data.get('amount_paise', 0)) / 100:,.2f}"
+        amount_paise = case_data.get("amount_paise", 0)
+        paid_paise = case_data.get("amount_paid_paise", 0) or 0
+        outstanding_paise = max(0, amount_paise - paid_paise) if paid_paise > 0 else amount_paise
+        amount_inr = f"{float(outstanding_paise) / 100:,.2f}"
         interest_paise = case_data.get("computed_interest_paise") or 0
         interest_inr = f"{float(interest_paise) / 100:,.2f}"
         current_rung = case_data.get("current_rung", 1)
         supplier_is_msme = bool(case_data.get("supplier_is_msme", True))
 
-        if current_rung >= 2 and supplier_is_msme and interest_paise > 0:
-            total_inr = f"{(float(case_data.get('amount_paise', 0)) + float(interest_paise)) / 100:,.2f}"
+        if paid_paise > 0:
+            return (
+                f"Namaste, {buyer_name} accounts department ke liye follow up hai regarding invoice {invoice_num}. "
+                f"Aapki partial payment receive hone ke baad, remaining outstanding balance {amount_inr} rupees pending hai. "
+                f"Kripya attached Razorpay link se balance clear karein. Dhanyawaad."
+            )
+        elif current_rung >= 2 and supplier_is_msme and interest_paise > 0:
+            total_inr = f"{(float(amount_paise) + float(interest_paise)) / 100:,.2f}"
             return (
                 f"Namaste, {buyer_name} accounts department ke liye urgent call hai regarding invoice {invoice_num}. "
                 f"Principal amount {amount_inr} rupees par MSMED Act Section 16 ke tahet {interest_inr} rupees statutory compound interest "
@@ -116,22 +159,40 @@ os.makedirs(AUDIO_STORAGE_DIR, exist_ok=True)
 
 def get_stored_audio_info(module: str, case_id: str, speaker: str) -> dict[str, str] | None:
     filename = f"{module.lower()}_{str(case_id)}_{speaker}.wav"
+    txt_filename = f"{module.lower()}_{str(case_id)}_{speaker}.txt"
     file_path = os.path.join(AUDIO_STORAGE_DIR, filename)
+    txt_path = os.path.join(AUDIO_STORAGE_DIR, txt_filename)
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        script_text = None
+        if os.path.exists(txt_path):
+            try:
+                with open(txt_path, "r", encoding="utf-8") as tf:
+                    script_text = tf.read().strip()
+            except Exception:
+                pass
         return {
             "filename": filename,
             "audio_url": f"/audio/{filename}",
             "file_path": file_path,
+            "script_text": script_text,
         }
     return None
 
 
-def save_audio_to_storage(module: str, case_id: str, speaker: str, base64_data: str) -> str:
+def save_audio_to_storage(module: str, case_id: str, speaker: str, base64_data: str, script_text: str | None = None) -> str:
     filename = f"{module.lower()}_{str(case_id)}_{speaker}.wav"
+    txt_filename = f"{module.lower()}_{str(case_id)}_{speaker}.txt"
     file_path = os.path.join(AUDIO_STORAGE_DIR, filename)
+    txt_path = os.path.join(AUDIO_STORAGE_DIR, txt_filename)
     audio_bytes = base64.b64decode(base64_data)
     with open(file_path, "wb") as f:
         f.write(audio_bytes)
+    if script_text:
+        try:
+            with open(txt_path, "w", encoding="utf-8") as tf:
+                tf.write(script_text.strip())
+        except Exception:
+            pass
     return f"/audio/{filename}"
 
 
@@ -171,7 +232,7 @@ async def synthesize_hinglish_voice(
         base64_audio = audios[0]
         audio_url = None
         if module and case_id:
-            audio_url = save_audio_to_storage(module, str(case_id), speaker, base64_audio)
+            audio_url = save_audio_to_storage(module, str(case_id), speaker, base64_audio, script_text=text)
 
         return {
             "status": "success",

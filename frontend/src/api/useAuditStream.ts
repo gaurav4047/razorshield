@@ -4,7 +4,7 @@ import { fetchApi } from "./client";
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || "ws://localhost:8000";
 
-export function useAuditStream(batchId: string | null) {
+export function useAuditStream(batchId: string | null, caseType?: CaseType) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
@@ -13,9 +13,10 @@ export function useAuditStream(batchId: string | null) {
 
     let isMounted = true;
 
-    // Fetch initial history
+    // Fetch initial history filtered by caseType
+    const typeParam = caseType ? `&case_type=${caseType}` : "";
     fetchApi<{ count: number; audit_logs: AuditLogEntry[] } | AuditLogEntry[]>(
-      `/api/audit?batch_id=${batchId}&limit=50`
+      `/api/audit?batch_id=${batchId}${typeParam}&limit=100`
     )
       .then((res) => {
         if (isMounted && res) {
@@ -48,6 +49,7 @@ export function useAuditStream(batchId: string | null) {
         try {
           const newEntry: AuditLogEntry = JSON.parse(event.data);
           if (isMounted) {
+            if (caseType && newEntry.case_type !== caseType) return;
             setLogs((prev) => {
               if (prev.some((p) => p.id === newEntry.id)) return prev;
               return [newEntry, ...prev];
@@ -65,7 +67,7 @@ export function useAuditStream(batchId: string | null) {
       isMounted = false;
       if (ws) ws.close();
     };
-  }, [batchId]);
+  }, [batchId, caseType]);
 
   return { logs, isConnected };
 }

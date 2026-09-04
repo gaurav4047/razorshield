@@ -27,7 +27,7 @@ async def audit_node(state: PipelineState) -> dict:
     stopping_rules = state.get("stopping_rules_checked", [])
     reason = state.get("reason", "Pipeline execution completed")
     ai_reasoning = state.get("ai_reasoning")
-    rule_suggested = state.get("rule_recommendation")
+    rule_suggested = state.get("rule_recommendation") or state.get("rule_suggestion") or final_decision
     razorpay_ref = state.get("razorpay_reference_id")
     gross_amount = state.get("order_amount_paise")
     computed_interest = state.get("computed_interest_paise")

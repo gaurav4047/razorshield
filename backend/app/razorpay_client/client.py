@@ -25,6 +25,8 @@ async def create_payment_link(
     customer_contact: str,
     accept_partial: bool = False,
     first_min_partial_amount: int | None = None,
+    notify_sms: bool = False,
+    notify_email: bool = False,
     notes: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -37,7 +39,7 @@ async def create_payment_link(
             "email": customer_email,
             "contact": customer_contact,
         },
-        "notify": {"sms": False, "email": False},
+        "notify": {"sms": notify_sms, "email": notify_email},
         "reminder_enable": False,
         "notes": notes or {},
     }

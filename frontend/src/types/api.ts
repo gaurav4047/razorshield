@@ -142,6 +142,8 @@ export interface AuditLogEntry {
   net_amount_paise: number | null;
   computed_interest_accrued_paise: number | null;
   razorpay_reference: string | null;
+  counterparty_name?: string | null;
+  case_reference?: string | null;
   created_at: string;
 }
 
@@ -176,6 +178,8 @@ export interface BatchSummary {
   net_recovered_inr?: number;
   total_interest_accrued_paise?: number;
   total_interest_accrued_inr?: number;
+  settled_cases_count?: number;
+  case_recovery_rate?: number;
   recovery_rate?: number;
   recovery_rate_pct?: number;
   partially_paid_count?: number;

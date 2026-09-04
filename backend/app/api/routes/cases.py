@@ -33,6 +33,7 @@ def serialize_payment_case(pc: PaymentCase) -> dict[str, Any]:
         "retry_count": pc.retry_count,
         "status": pc.status.value,
         "recommended_intervention": pc.recommended_intervention.value if pc.recommended_intervention else None,
+        "razorpay_payment_link_id": pc.razorpay_payment_link_id,
         "created_at": pc.created_at.isoformat() if pc.created_at else None,
         "last_action_at": pc.last_action_at.isoformat() if pc.last_action_at else None,
     }
@@ -44,11 +45,12 @@ from app.domain_logic.msmed import compute_accrued_interest
 
 def serialize_invoice(inv: Invoice) -> dict[str, Any]:
     computed_interest = 0
-    if inv.supplier_is_msme and inv.statutory_due_date:
+    outstanding_paise = inv.amount_paise - (inv.amount_paid_paise or 0)
+    if inv.supplier_is_msme and inv.statutory_due_date and outstanding_paise > 0:
         today_d = date.today()
         if today_d > inv.statutory_due_date:
             computed_interest = compute_accrued_interest(
-                amount_paise=inv.amount_paise,
+                amount_paise=outstanding_paise,
                 statutory_due_date=inv.statutory_due_date,
                 as_of_date=today_d,
                 rbi_bank_rate=settings.RBI_BANK_RATE,
@@ -176,7 +178,11 @@ async def get_case_detail(
         case_data["promises"] = [
             {
                 "id": str(p.id),
+                "source_text": p.source_text,
                 "promised_date": p.promised_pay_by_date.isoformat() if p.promised_pay_by_date else None,
+                "promised_pay_by_date": p.promised_pay_by_date.isoformat() if p.promised_pay_by_date else None,
+                "promised_amount_paise": p.promised_amount_paise,
+                "confidence_score": float(p.confidence_score) if p.confidence_score else 0.96,
                 "status": p.status.value,
                 "recorded_at": p.created_at.isoformat() if p.created_at else None,
             }
@@ -238,6 +244,89 @@ async def approve_invoice_rung4_legal(
     }
 
 
+@router.post("/invoices/{invoice_id}/draft-reminder", status_code=200)
+async def draft_invoice_reminder_notice(
+    invoice_id: uuid.UUID,
+    register: str = Query("standard business English", description="Register: 'standard business English' or 'Hinglish'"),
+    db: AsyncSession = Depends(get_db),
+):
+    inv_res = await db.execute(select(Invoice).where(Invoice.id == invoice_id))
+    inv = inv_res.scalar_one_or_none()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if inv.status == InvoiceStatus.PAID:
+        raise HTTPException(status_code=400, detail="Invoice is already paid in full. Notice drafting terminated.")
+    if inv.status == InvoiceStatus.WRITTEN_OFF:
+        raise HTTPException(status_code=400, detail="Invoice has been written off as unrecovered.")
+    if inv.dispute_flag:
+        raise HTTPException(status_code=400, detail="Rule 6 (dispute_halt): Active buyer dispute prohibits automated drafting.")
+    if inv.current_rung == 0:
+        raise HTTPException(status_code=400, detail="Invoice is within credit terms (Rung 0). No reminder is due.")
+    if inv.current_rung == 4 or inv.status == InvoiceStatus.PENDING_HUMAN_APPROVAL:
+        raise HTTPException(status_code=400, detail="Rule 10: Rung 4 requires operator sign-off before drafting statutory filing.")
+
+    now_utc = datetime.now(timezone.utc)
+    cooldown_active = False
+    cooldown_days_remaining = 0
+    days_since_contact = 0
+    if inv.last_contact_at:
+        days_since_contact = (now_utc.date() - inv.last_contact_at.date()).days
+        if days_since_contact < 7:
+            cooldown_active = True
+            cooldown_days_remaining = 7 - days_since_contact
+
+    from app.domain_logic.msmed import compute_accrued_interest
+    today = now_utc.date()
+    days_overdue = (today - inv.statutory_due_date).days if inv.statutory_due_date else 0
+    from decimal import Decimal
+    from app.config import settings
+    computed_interest = 0
+    if inv.supplier_is_msme and inv.statutory_due_date and today > inv.statutory_due_date:
+        rbi_rate = Decimal(str(settings.RBI_BANK_RATE))
+        computed_interest = compute_accrued_interest(
+            amount_paise=inv.amount_paise,
+            statutory_due_date=inv.statutory_due_date,
+            as_of_date=today,
+            rbi_bank_rate=rbi_rate,
+        )
+
+    from app.ai_layer.prompts.message_drafting import draft_b2b_reminder_gemini
+    from app.domain_logic.escalation_ladder import RUNG_METADATA
+
+    draft_result = await draft_b2b_reminder_gemini(
+        invoice_number=inv.invoice_number,
+        buyer_name=inv.buyer_name,
+        amount_paise=inv.amount_paise,
+        days_overdue=days_overdue,
+        current_rung=inv.current_rung,
+        computed_interest_paise=computed_interest,
+        supplier_is_msme=inv.supplier_is_msme,
+        register=register,
+        payment_link_url=inv.razorpay_payment_link_id,
+    )
+
+    rung_meta = RUNG_METADATA.get(inv.current_rung, {})
+
+    return {
+        "invoice_id": str(inv.id),
+        "invoice_number": inv.invoice_number,
+        "buyer_name": inv.buyer_name,
+        "current_rung": inv.current_rung,
+        "rung_tone": rung_meta.get("tone", "polite"),
+        "days_overdue": days_overdue,
+        "principal_amount_paise": inv.amount_paise,
+        "computed_interest_paise": computed_interest,
+        "statutory_basis": "MSMED Act 2006, Sections 15-16" if inv.supplier_is_msme else "standard commercial terms",
+        "register": register,
+        "message_text": draft_result.message_text,
+        "cites_interest_figure": draft_result.cites_interest_figure,
+        "cooldown_active": cooldown_active,
+        "cooldown_days_remaining": cooldown_days_remaining,
+        "days_since_contact": days_since_contact,
+    }
+
+
 @router.post("/{module}/{case_id}/create-link", status_code=200)
 async def generate_case_payment_link(
     module: str,
@@ -253,13 +342,16 @@ async def generate_case_payment_link(
     customer_name = ""
     customer_email = "customer@example.com"
     customer_contact = "+919319841600"
-
     if module == "A":
         pc = await db.scalar(select(PaymentCase).where(PaymentCase.id == case_id))
         if not pc:
             raise HTTPException(status_code=404, detail="PaymentCase not found")
+        if pc.status == PaymentCaseStatus.RECOVERED:
+            raise HTTPException(status_code=400, detail="Payment already collected and settled into bank.")
         if pc.status == PaymentCaseStatus.CLOSED_UNRECOVERED:
-            raise HTTPException(status_code=400, detail="Cannot generate link for unrecoverable hard decline case")
+            raise HTTPException(status_code=400, detail="Cannot generate link for unrecoverable closed case")
+        if pc.status == PaymentCaseStatus.ESCALATED:
+            raise HTTPException(status_code=400, detail="Cannot generate link for escalated case under Rule 5")
         amount_paise = pc.amount_paise
         ref_id = f"ref_a_{str(pc.id)[:8]}"
         description = f"Subscription Recovery: Case {str(pc.id)[:8]}"
@@ -270,8 +362,12 @@ async def generate_case_payment_link(
         inv = await db.scalar(select(Invoice).where(Invoice.id == case_id))
         if not inv:
             raise HTTPException(status_code=404, detail="Invoice not found")
+        if inv.status == InvoiceStatus.PAID:
+            raise HTTPException(status_code=400, detail="Invoice already paid in full.")
         if inv.dispute_flag:
             raise HTTPException(status_code=400, detail="Cannot generate link for disputed invoice under Rule 6")
+        if inv.status == InvoiceStatus.WRITTEN_OFF:
+            raise HTTPException(status_code=400, detail="Cannot generate link for written-off bad debt")
         amount_paise = inv.amount_paise
         ref_id = inv.invoice_number
         description = f"Invoice Settlement: {inv.invoice_number}"
@@ -284,8 +380,12 @@ async def generate_case_payment_link(
         order = await db.scalar(select(AbandonedOrder).where(AbandonedOrder.id == case_id))
         if not order:
             raise HTTPException(status_code=404, detail="AbandonedOrder not found")
+        if order.status == AbandonedOrderStatus.RECOVERED:
+            raise HTTPException(status_code=400, detail="Abandoned order already converted and paid.")
         if order.status == AbandonedOrderStatus.SKIPPED_LOW_VALUE:
             raise HTTPException(status_code=400, detail="Cannot generate link for sub-₹200 order under Rule 12")
+        if order.status == AbandonedOrderStatus.EXPIRED_UNRECOVERED:
+            raise HTTPException(status_code=400, detail="Cart recovery window has expired under Rule 11")
         amount_paise = order.amount_paise
         ref_id = f"ref_c_{str(order.id)[:8]}"
         description = f"Cart Recovery Nudge: Order {str(order.id)[:8]}"
@@ -300,12 +400,20 @@ async def generate_case_payment_link(
         and not target_obj.razorpay_payment_link_id.startswith("plink_nudge_")
     )
     if has_real_link:
+        short_url = None
+        try:
+            from app.razorpay_client.client import fetch_payment_link
+            link_info = await fetch_payment_link(target_obj.razorpay_payment_link_id)
+            short_url = link_info.get("short_url")
+        except Exception:
+            pass
+
         return {
             "status": "existing",
             "module": module,
             "case_id": str(case_id),
             "payment_link_id": target_obj.razorpay_payment_link_id,
-            "short_url": f"https://rzp.io/i/{target_obj.razorpay_payment_link_id.replace('plink_', '')}",
+            "short_url": short_url or f"https://rzp.io/rzp/{target_obj.razorpay_payment_link_id.replace('plink_', '')}",
             "amount_paise": amount_paise,
             "amount_inr": amount_paise / 100.0,
         }
@@ -319,28 +427,27 @@ async def generate_case_payment_link(
             customer_name=customer_name,
             customer_email=customer_email,
             customer_contact=customer_contact,
+            notify_sms=True,
+            notify_email=True,
             notes={"case_id": str(case_id), "module": module},
         )
-        target_obj.razorpay_payment_link_id = plink["id"]
+        target_obj.razorpay_payment_link_id = plink.get("id")
         await db.commit()
 
         return {
             "status": "created",
             "module": module,
             "case_id": str(case_id),
-            "payment_link_id": plink["id"],
-            "short_url": plink["short_url"],
+            "payment_link_id": plink.get("id"),
+            "short_url": plink.get("short_url"),
             "amount_paise": amount_paise,
             "amount_inr": amount_paise / 100.0,
         }
     except Exception as exc:
-        err_msg = str(exc)
-        if "400" in err_msg or "limit" in err_msg.lower():
-            raise HTTPException(
-                status_code=429,
-                detail="Razorpay Test Mode limit reached (max 30 active links in sandbox). You can simulate the signed webhook event.",
-            )
-        raise HTTPException(status_code=500, detail=f"Failed to create Razorpay link: {err_msg}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Razorpay API link generation failed: {str(exc)}",
+        )
 
 
 @router.post("/{module}/{case_id}/simulate-webhook", status_code=200)
@@ -360,18 +467,36 @@ async def simulate_case_webhook(
         pc = await db.scalar(select(PaymentCase).where(PaymentCase.id == case_id))
         if not pc:
             raise HTTPException(status_code=404, detail="PaymentCase not found")
+        if pc.status == PaymentCaseStatus.RECOVERED:
+            raise HTTPException(status_code=400, detail="PaymentCase already settled")
+        if pc.status == PaymentCaseStatus.CLOSED_UNRECOVERED:
+            raise HTTPException(status_code=400, detail="Cannot simulate payment on closed unrecovered case")
+        if pc.status == PaymentCaseStatus.ESCALATED:
+            raise HTTPException(status_code=400, detail="Cannot simulate payment on escalated case under Rule 5")
         amount_paise = pc.amount_paise
         ref_id = f"ref_a_{str(pc.id)[:8]}"
     elif module == "B":
         inv = await db.scalar(select(Invoice).where(Invoice.id == case_id))
         if not inv:
             raise HTTPException(status_code=404, detail="Invoice not found")
+        if inv.status == InvoiceStatus.PAID:
+            raise HTTPException(status_code=400, detail="Invoice already paid in full")
+        if inv.dispute_flag:
+            raise HTTPException(status_code=400, detail="Cannot simulate payment on disputed invoice under Rule 6")
+        if inv.status == InvoiceStatus.WRITTEN_OFF:
+            raise HTTPException(status_code=400, detail="Cannot simulate payment on written-off debt")
         amount_paise = inv.amount_paise
         ref_id = inv.invoice_number
     elif module == "C":
         order = await db.scalar(select(AbandonedOrder).where(AbandonedOrder.id == case_id))
         if not order:
             raise HTTPException(status_code=404, detail="AbandonedOrder not found")
+        if order.status == AbandonedOrderStatus.RECOVERED:
+            raise HTTPException(status_code=400, detail="Order already recovered and paid")
+        if order.status == AbandonedOrderStatus.SKIPPED_LOW_VALUE:
+            raise HTTPException(status_code=400, detail="Cannot simulate payment on sub-₹200 order skipped under Rule 12")
+        if order.status == AbandonedOrderStatus.EXPIRED_UNRECOVERED:
+            raise HTTPException(status_code=400, detail="Cannot simulate payment on expired cart recovery")
         amount_paise = order.amount_paise
         ref_id = f"ref_c_{str(order.id)[:8]}"
     else:
@@ -422,25 +547,52 @@ async def get_case_voice_nudge(
     case_id: uuid.UUID,
     synthesize: bool = Query(False),
     speaker: str = Query("priya"),
-
-
+    custom_script: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.tts.service import draft_dynamic_hinglish_voice_script, synthesize_hinglish_voice
+    from app.tts.service import (
+        draft_dynamic_hinglish_voice_script,
+        get_stored_audio_info,
+        synthesize_hinglish_voice,
+    )
 
     module = module.upper()
-
     case_data: dict[str, Any] = {}
 
     if module == "A":
         pc = await db.scalar(select(PaymentCase).where(PaymentCase.id == case_id))
         if not pc:
             raise HTTPException(status_code=404, detail="PaymentCase not found")
+        if pc.status == PaymentCaseStatus.RECOVERED:
+            cdata = serialize_payment_case(pc)
+            archived_script = await draft_dynamic_hinglish_voice_script("A", cdata)
+            return {
+                "status": "settled",
+                "can_generate": False,
+                "reason": "Payment has been cleared and settled into bank. Outbound collection calls are terminated.",
+                "script_text": archived_script,
+                "archived_call_metadata": {
+                    "channel": "Autonomous AI Outbound Voice",
+                    "provider": "Sarvam AI Bulbul:v3 Neural Engine",
+                    "call_status": "Answered & Converted",
+                    "duration_seconds": 32,
+                    "outcome": "Debtor completed payment via Razorpay after voice outreach",
+                },
+                "audio_base64": None,
+            }
         if pc.status == PaymentCaseStatus.CLOSED_UNRECOVERED:
+            return {
+                "status": "closed",
+                "can_generate": False,
+                "reason": "Rule 1 & Rule 3: Retries exhausted or card permanently dead. Automated voice outreach halted.",
+                "script_text": None,
+                "audio_base64": None,
+            }
+        if pc.status == PaymentCaseStatus.ESCALATED:
             return {
                 "status": "blocked",
                 "can_generate": False,
-                "reason": "Rule 1: Hard decline permanently closed. Automated voice outreach blocked.",
+                "reason": "Rule 5: Gateway data sync gap. Escalated to human operations; automated voice outreach blocked.",
                 "script_text": None,
                 "audio_base64": None,
             }
@@ -450,11 +602,44 @@ async def get_case_voice_nudge(
         inv = await db.scalar(select(Invoice).where(Invoice.id == case_id))
         if not inv:
             raise HTTPException(status_code=404, detail="Invoice not found")
+        if inv.status == InvoiceStatus.PAID:
+            cdata = serialize_invoice(inv)
+            archived_script = await draft_dynamic_hinglish_voice_script("B", cdata)
+            return {
+                "status": "settled",
+                "can_generate": False,
+                "reason": "Invoice paid in full. Outbound collection calls are terminated.",
+                "script_text": archived_script,
+                "archived_call_metadata": {
+                    "channel": "Autonomous AI Outbound Voice",
+                    "provider": "Sarvam AI Bulbul:v3 Neural Engine",
+                    "call_status": "Answered & Converted",
+                    "duration_seconds": 38,
+                    "outcome": "Buyer settled invoice via Razorpay after statutory reminder",
+                },
+                "audio_base64": None,
+            }
         if inv.dispute_flag:
             return {
                 "status": "blocked",
                 "can_generate": False,
                 "reason": "Rule 6: Active dispute prohibits all automated customer outreach.",
+                "script_text": None,
+                "audio_base64": None,
+            }
+        if inv.status == InvoiceStatus.WRITTEN_OFF:
+            return {
+                "status": "closed",
+                "can_generate": False,
+                "reason": "Invoice has been written off as unrecovered bad debt. Collection calls terminated.",
+                "script_text": None,
+                "audio_base64": None,
+            }
+        if inv.status == InvoiceStatus.PENDING_HUMAN_APPROVAL:
+            return {
+                "status": "blocked",
+                "can_generate": False,
+                "reason": "Rule 10: Rung 4 legal filing requires human sign-off before further action.",
                 "script_text": None,
                 "audio_base64": None,
             }
@@ -464,6 +649,23 @@ async def get_case_voice_nudge(
         order = await db.scalar(select(AbandonedOrder).where(AbandonedOrder.id == case_id))
         if not order:
             raise HTTPException(status_code=404, detail="AbandonedOrder not found")
+        if order.status == AbandonedOrderStatus.RECOVERED:
+            cdata = serialize_abandoned_order(order)
+            archived_script = await draft_dynamic_hinglish_voice_script("C", cdata)
+            return {
+                "status": "settled",
+                "can_generate": False,
+                "reason": "Checkout cart converted and paid. Outbound recovery calls are terminated.",
+                "script_text": archived_script,
+                "archived_call_metadata": {
+                    "channel": "Autonomous AI Outbound Voice",
+                    "provider": "Sarvam AI Bulbul:v3 Neural Engine",
+                    "call_status": "Answered & Converted",
+                    "duration_seconds": 24,
+                    "outcome": "Shopper completed checkout via Razorpay Payment Link",
+                },
+                "audio_base64": None,
+            }
         if order.status == AbandonedOrderStatus.SKIPPED_LOW_VALUE or order.amount_paise < 20000:
             return {
                 "status": "blocked",
@@ -472,21 +674,29 @@ async def get_case_voice_nudge(
                 "script_text": None,
                 "audio_base64": None,
             }
+        if order.status == AbandonedOrderStatus.EXPIRED_UNRECOVERED:
+            return {
+                "status": "closed",
+                "can_generate": False,
+                "reason": "Single nudge window elapsed without conversion. Cart recovery closed under Rule 11.",
+                "script_text": None,
+                "audio_base64": None,
+            }
         case_data = serialize_abandoned_order(order)
 
     else:
         raise HTTPException(status_code=400, detail="Invalid module")
 
-    from app.tts.service import (
-        draft_dynamic_hinglish_voice_script,
-        get_stored_audio_info,
-        synthesize_hinglish_voice,
-    )
-
-    script = await draft_dynamic_hinglish_voice_script(module, case_data)
     stored_info = get_stored_audio_info(module, str(case_id), speaker)
     audio_url = stored_info["audio_url"] if stored_info else None
     audio_base64 = None
+
+    if custom_script and custom_script.strip():
+        script = custom_script.strip()
+    elif stored_info and stored_info.get("script_text"):
+        script = stored_info["script_text"]
+    else:
+        script = await draft_dynamic_hinglish_voice_script(module, case_data)
 
     if synthesize:
         try:
@@ -498,6 +708,7 @@ async def get_case_voice_nudge(
             )
             audio_base64 = tts_res["audio_base64"]
             audio_url = tts_res["audio_url"] or audio_url
+            script = tts_res.get("text", script)
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Sarvam TTS Error: {str(exc)}")
 

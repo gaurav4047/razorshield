@@ -73,6 +73,7 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
             case_type=CaseType.PAYMENT_CASE,
             case_id=payment_case.id,
             stage=PipelineStage.AUDIT,
+            rule_suggested_action="recovered",
             final_action="recovered",
             reason=f"Recovery confirmed via Razorpay webhook {event_type}",
             gross_amount_paise=gross_amount,
@@ -85,6 +86,16 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
             ],
         )
         db.add(audit_entry)
+        await db.flush()
+        try:
+            from app.api.routes.audit import audit_manager, serialize_audit_entry
+            meta = {
+                "counterparty_name": f"{payment_case.method.value.upper()} Mandate",
+                "case_reference": payment_case.razorpay_payment_id,
+            }
+            await audit_manager.broadcast(serialize_audit_entry(audit_entry, meta))
+        except Exception:
+            pass
         return {"module": "A", "case_id": str(payment_case.id), "status": "recovered"}
 
     # 2. Try matching Module B (Invoice)
@@ -118,6 +129,7 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
             case_type=CaseType.INVOICE,
             case_id=invoice.id,
             stage=PipelineStage.AUDIT,
+            rule_suggested_action="recovered",
             final_action="recovered",
             reason=f"Invoice payment confirmed via Razorpay webhook {event_type}",
             gross_amount_paise=gross_amount,
@@ -130,6 +142,16 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
             ],
         )
         db.add(audit_entry)
+        await db.flush()
+        try:
+            from app.api.routes.audit import audit_manager, serialize_audit_entry
+            meta = {
+                "counterparty_name": invoice.buyer_name,
+                "case_reference": invoice.invoice_number,
+            }
+            await audit_manager.broadcast(serialize_audit_entry(audit_entry, meta))
+        except Exception:
+            pass
         return {"module": "B", "case_id": str(invoice.id), "status": "recovered"}
 
     # 3. Try matching Module C (AbandonedOrder)
@@ -162,6 +184,7 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
             case_type=CaseType.ABANDONED_ORDER,
             case_id=order.id,
             stage=PipelineStage.AUDIT,
+            rule_suggested_action="recovered",
             final_action="recovered",
             reason=f"Abandoned order recovered via Razorpay webhook {event_type}",
             gross_amount_paise=gross_amount,
@@ -174,6 +197,16 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
             ],
         )
         db.add(audit_entry)
+        await db.flush()
+        try:
+            from app.api.routes.audit import audit_manager, serialize_audit_entry
+            meta = {
+                "counterparty_name": order.customer_name,
+                "case_reference": order.razorpay_order_id,
+            }
+            await audit_manager.broadcast(serialize_audit_entry(audit_entry, meta))
+        except Exception:
+            pass
         return {"module": "C", "case_id": str(order.id), "status": "recovered"}
 
     return None

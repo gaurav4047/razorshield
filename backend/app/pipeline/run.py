@@ -1,3 +1,5 @@
+from datetime import date
+from decimal import Decimal
 import uuid
 from typing import Any
 from sqlalchemy import select
@@ -6,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.invoice import Invoice
 from app.db.models.order import AbandonedOrder
 from app.db.models.payment_case import PaymentCase
+from app.domain_logic.msmed import compute_accrued_interest
 from app.pipeline.graph import build_module_graph
 from app.pipeline.state import PipelineState
 
@@ -31,6 +34,13 @@ async def run_pipeline_for_invoice(
     if not inv:
         raise ValueError(f"Invoice with ID {invoice_id} not found")
 
+    today_d = date.today()
+    interest_paise = 0
+    if supplier_is_msme and inv.statutory_due_date and today_d > inv.statutory_due_date:
+        interest_paise = compute_accrued_interest(
+            inv.amount_paise, inv.statutory_due_date, today_d, Decimal("6.75")
+        )
+
     initial_state: PipelineState = {
         "module": "B",
         "case_id": str(inv.id),
@@ -41,6 +51,7 @@ async def run_pipeline_for_invoice(
         "dispute_flag": inv.dispute_flag,
         "broken_promise_count": inv.broken_promise_count,
         "supplier_is_msme": supplier_is_msme,
+        "computed_interest_paise": interest_paise,
         "last_contact_at": inv.last_contact_at.isoformat() if inv.last_contact_at else None,
         "human_approved": human_approved,
         "buyer_response_text": buyer_reply,
@@ -68,6 +79,7 @@ async def run_pipeline_for_payment_case(
     case_id: uuid.UUID | str,
     db: AsyncSession,
     case_history: str | None = None,
+    ignore_cooldown: bool = False,
 ) -> PipelineState:
     case_uuid = uuid.UUID(str(case_id))
     result = await db.execute(select(PaymentCase).where(PaymentCase.id == case_uuid))
@@ -85,7 +97,7 @@ async def run_pipeline_for_payment_case(
             .order_by(AuditLogEntry.timestamp.asc())
         )
         prior_audits = audit_res.scalars().all()
-        if prior_audits:
+        if len(prior_audits) > 1:
             history_lines = [
                 f"- Attempt {i+1} ({a.timestamp.strftime('%Y-%m-%d %H:%M') if a.timestamp else 'prior'}): action={a.final_action}, reason={a.reason}"
                 for i, a in enumerate(prior_audits)
@@ -93,8 +105,6 @@ async def run_pipeline_for_payment_case(
             case_history = f"Historical attempts on this case:\n" + "\n".join(history_lines)
         elif pc.retry_count > 0 or pc.attempt_number > 1:
             case_history = f"Case has {pc.retry_count} prior retries (attempt #{pc.attempt_number})."
-        elif pc.buyer_archetype:
-            case_history = f"Account context: profile classified as {pc.buyer_archetype.replace('_', ' ')}."
 
     initial_state: PipelineState = {
         "module": "A",
@@ -108,7 +118,9 @@ async def run_pipeline_for_payment_case(
         "attempt_number": pc.attempt_number,
         "retry_count": pc.retry_count,
         "order_amount_paise": pc.amount_paise,
-        "last_action_at": pc.last_action_at.isoformat() if pc.last_action_at else None,
+        "last_action_at": (
+            None if ignore_cooldown else (pc.last_action_at.isoformat() if pc.last_action_at else None)
+        ),
         "subscription_state": pc.subscription_state.value if pc.subscription_state else None,
         "case_history": case_history,
         "fault_attribution": None,

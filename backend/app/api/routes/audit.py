@@ -40,7 +40,7 @@ class AuditConnectionManager:
 audit_manager = AuditConnectionManager()
 
 
-def serialize_audit_entry(entry: AuditLogEntry) -> dict[str, Any]:
+def serialize_audit_entry(entry: AuditLogEntry, meta: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "id": entry.id,
         "batch_id": str(entry.batch_id),
@@ -59,6 +59,8 @@ def serialize_audit_entry(entry: AuditLogEntry) -> dict[str, Any]:
         "net_amount_paise": entry.net_amount_paise,
         "computed_interest_accrued_paise": entry.computed_interest_accrued_paise,
         "razorpay_reference": entry.razorpay_reference,
+        "counterparty_name": (meta or {}).get("counterparty_name"),
+        "case_reference": (meta or {}).get("case_reference"),
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
     }
 
@@ -87,9 +89,44 @@ async def list_audit_logs(
     result = await db.execute(query)
     rows = result.scalars().all()
 
+    # Batch lookup counterparty metadata
+    inv_ids = [r.case_id for r in rows if r.case_type == CaseType.INVOICE]
+    ord_ids = [r.case_id for r in rows if r.case_type == CaseType.ABANDONED_ORDER]
+    pc_ids = [r.case_id for r in rows if r.case_type == CaseType.PAYMENT_CASE]
+
+    meta_map: dict[uuid.UUID, dict[str, Any]] = {}
+    if inv_ids:
+        from app.db.models.invoice import Invoice
+        inv_res = await db.execute(
+            select(Invoice.id, Invoice.buyer_name, Invoice.invoice_number).where(Invoice.id.in_(inv_ids))
+        )
+        for i_id, b_name, inv_num in inv_res.all():
+            meta_map[i_id] = {"counterparty_name": b_name, "case_reference": inv_num}
+
+    if ord_ids:
+        from app.db.models.order import AbandonedOrder
+        ord_res = await db.execute(
+            select(AbandonedOrder.id, AbandonedOrder.customer_name, AbandonedOrder.razorpay_order_id).where(
+                AbandonedOrder.id.in_(ord_ids)
+            )
+        )
+        for o_id, c_name, r_id in ord_res.all():
+            meta_map[o_id] = {"counterparty_name": c_name, "case_reference": r_id}
+
+    if pc_ids:
+        from app.db.models.payment_case import PaymentCase
+        pc_res = await db.execute(
+            select(PaymentCase.id, PaymentCase.razorpay_payment_id, PaymentCase.method).where(
+                PaymentCase.id.in_(pc_ids)
+            )
+        )
+        for p_id, r_id, meth in pc_res.all():
+            meth_str = meth.value.upper() if hasattr(meth, "value") else str(meth).upper()
+            meta_map[p_id] = {"counterparty_name": f"{meth_str} Mandate", "case_reference": r_id}
+
     return {
         "count": len(rows),
-        "audit_logs": [serialize_audit_entry(r) for r in rows],
+        "audit_logs": [serialize_audit_entry(r, meta_map.get(r.case_id)) for r in rows],
     }
 
 
