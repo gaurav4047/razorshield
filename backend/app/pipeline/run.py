@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.models.invoice import Invoice
 from app.db.models.order import AbandonedOrder
 from app.db.models.payment_case import PaymentCase
@@ -38,7 +39,7 @@ async def run_pipeline_for_invoice(
     interest_paise = 0
     if supplier_is_msme and inv.statutory_due_date and today_d > inv.statutory_due_date:
         interest_paise = compute_accrued_interest(
-            inv.amount_paise, inv.statutory_due_date, today_d, Decimal("6.75")
+            inv.amount_paise, inv.statutory_due_date, today_d, settings.RBI_BANK_RATE
         )
 
     initial_state: PipelineState = {

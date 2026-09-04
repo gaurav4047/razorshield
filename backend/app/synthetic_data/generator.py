@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_layer.prompts.conflicting_signal_reasoning import evaluate_conflicting_signals
 from app.ai_layer.prompts.reply_classification import classify_buyer_reply
 from app.ai_layer.prompts.signal_parsing import parse_failure_signal
+from app.config import settings
 from app.db.models.audit_log import AuditLogEntry, CaseType, PipelineStage
 from app.db.models.batch import Batch
 from app.db.models.invoice import Invoice, InvoicePromise, InvoiceStatus, PromiseStatus
@@ -970,7 +971,7 @@ async def generate_batch(db: AsyncSession, label: str | None = None, seed: int |
         audit_entries.append(entry)
 
     # Module B audit entries
-    rbi_rate = Decimal("6.75")
+    rbi_rate = settings.RBI_BANK_RATE
     dispute_messages = [
         "Invoice billing rate is Rs. 450/unit instead of contract price Rs. 390/unit. Holding payment until revised credit note is issued.",
         "Consignment received with water damage during transit; 35 cartons rejected by warehouse quality control team. Need replacement.",

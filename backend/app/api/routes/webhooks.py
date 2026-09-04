@@ -61,6 +61,8 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
         payment_case = pc_res.scalar_one_or_none()
 
     if payment_case:
+        if payment_case.status == PaymentCaseStatus.RECOVERED:
+            return {"module": "A", "case_id": str(payment_case.id), "status": "already_recovered"}
         payment_case.status = PaymentCaseStatus.RECOVERED
         payment_case.last_action_at = now_utc
         if not gross_amount:
@@ -117,6 +119,8 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
         invoice = inv_res.scalar_one_or_none()
 
     if invoice:
+        if invoice.status == InvoiceStatus.PAID:
+            return {"module": "B", "case_id": str(invoice.id), "status": "already_paid"}
         invoice.status = InvoiceStatus.PAID
         invoice.amount_paid_paise = gross_amount or invoice.amount_paise
         if not gross_amount:
@@ -173,6 +177,8 @@ async def process_webhook_recovery(payload: dict, db: AsyncSession) -> dict | No
         order = ord_res.scalar_one_or_none()
 
     if order:
+        if order.status == AbandonedOrderStatus.RECOVERED:
+            return {"module": "C", "case_id": str(order.id), "status": "already_recovered"}
         order.status = AbandonedOrderStatus.RECOVERED
         if not gross_amount:
             gross_amount = order.amount_paise

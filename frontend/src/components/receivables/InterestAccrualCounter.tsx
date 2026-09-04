@@ -15,10 +15,10 @@ export default function InterestAccrualCounter({ invoice }: InterestAccrualCount
   useEffect(() => {
     if (!invoice.statutory_due_date) return;
 
-    const rbiBankRate = 6.75;
+    const rbiBankRate = 5.50;
     const statutoryMultiplier = 3;
-    const annualRate = (rbiBankRate * statutoryMultiplier) / 100; // 20.25% p.a.
-    const monthlyRate = annualRate / 12; // 1.6875% per month
+    const annualRate = (rbiBankRate * statutoryMultiplier) / 100; // 16.50% p.a.
+    const monthlyRate = annualRate / 12; // 1.375% per month
 
     const calculate = () => {
       const dueDate = new Date(invoice.statutory_due_date).getTime();
