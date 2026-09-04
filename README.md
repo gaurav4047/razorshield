@@ -23,6 +23,9 @@ The core architecture maintains a strict separation of concerns: AI models read 
 > [!NOTE]
 > **Research & Regulatory Grounding:** To inspect the underlying market reports, central bank directions, and statutory acts (including the MSMED Act 2006, RBI Bank Rate, and NPCI AutoPay circulars) that shaped ReClaim's design decisions, see [RESEARCH.md](./RESEARCH.md).
 
+> [!NOTE]
+> **Live API Execution & Sandbox Quota Guardrails:** While ReClaim autonomously runs failure signal parsing, MSMED interest calculation, stopping-rule policy gating, and batch pattern detection, external outbound actions (generating live Razorpay payment links, synthesizing Sarvam AI Hinglish voice notes, and sending outreach drafts) are triggered on demand by the operator within the Decision Packet console. This design prevents unintended exhaustion of third-party API credits and respects Razorpay's hard sandbox cap of 30 active payment links in test mode.
+
 ---
 
 ## 2. System Architecture
