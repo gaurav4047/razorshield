@@ -11,7 +11,6 @@ import {
   Play, 
   Pause,
   Sparkles, 
-  TrendingUp, 
   Percent, 
   Scale,
   Clock,
@@ -22,9 +21,6 @@ import {
   Headphones,
   Languages,
   DollarSign,
-  Activity,
-  Server,
-  FileText,
   BadgeCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -108,23 +104,21 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
         }`}
       >
         <div className="mx-auto flex max-w-[1600px] items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <img 
-              src="/logo.png" 
-              alt="ReClaim" 
-              className="h-11 w-11 rounded-xl object-contain bg-white p-1 shadow-xs border border-slate-200" 
-            />
+          <div className="flex items-center gap-3.5 select-none">
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 border border-blue-400/40">
+              <BadgeCheck className="h-6 w-6" />
+            </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <span className="text-2xl font-extrabold tracking-tight text-[#0c2340]">
-                  Re<span className="text-[#0066ff]">Claim</span>
+                <span className="text-2xl font-black tracking-tight text-[#0c2340]">
+                  Razor<span className="text-blue-600">Shield</span>
                 </span>
-                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#0066ff] border border-blue-200/60">
+                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-600 border border-blue-200/60">
                   Track 03
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                Autonomous Recovery for Indian Commerce
+                Autonomous Revenue Recovery &amp; Gateway Defense
               </p>
             </div>
           </div>
@@ -191,7 +185,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
               </h1>
 
               <p className="text-xl sm:text-2xl text-slate-600 leading-relaxed font-normal max-w-2xl">
-                Failed UPI AutoPay mandates, overdue B2B trade invoices, and abandoned carts bleed revenue continuously. ReClaim diagnoses root causes, enforces 13 strict regulatory stopping rules, and executes autonomous recovery without human delay.
+                Failed UPI AutoPay mandates, overdue B2B trade invoices, and abandoned carts bleed revenue continuously. RazorShield diagnoses root causes, enforces 13 strict regulatory stopping rules, and executes autonomous recovery without human delay.
               </p>
 
               <div className="flex flex-wrap items-center gap-4 pt-1">
@@ -446,7 +440,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
               Engineered for Every Failure Point
             </h2>
             <p className="text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
-              Payment failures cannot be treated with a one-size-fits-all retry script. ReClaim segregates money movement into three specialized, bounded streams.
+              Payment failures cannot be treated with a one-size-fits-all retry script. RazorShield segregates money movement into three specialized, bounded streams.
             </p>
           </div>
 
@@ -505,7 +499,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
                   </h3>
                   
                   <p className="text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
-                    Recurring payment failures on UPI AutoPay and cards happen primarily due to issuer timeouts, temporary balance dips, or peak congestion. Naive gateways retry immediately and fail. ReClaim reschedules execution intelligently.
+                    Recurring payment failures on UPI AutoPay and cards happen primarily due to issuer timeouts, temporary balance dips, or peak congestion. Naive gateways retry immediately and fail. RazorShield reschedules execution intelligently.
                   </p>
                   
                   <div className="space-y-4 pt-2">
@@ -609,7 +603,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
                   </h3>
                   
                   <p className="text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
-                    Under Section 16 of the MSMED Act 2006, buyers failing to pay within 45 days of acceptance are statutorily liable to compound penal interest at three times the RBI bank rate (20.25% p.a.). ReClaim enforces this legally.
+                    Under Section 16 of the MSMED Act 2006, buyers failing to pay within 45 days of acceptance are statutorily liable to compound penal interest at three times the RBI bank rate (20.25% p.a.). RazorShield enforces this legally.
                   </p>
 
                   <div className="space-y-4 pt-2">
@@ -713,7 +707,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
                   </h3>
                   
                   <p className="text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
-                    Shoppers abandoning payment at the final step show high purchase intent. ReClaim detects dropped sessions after 30 minutes, validates merchant profitability margins, and delivers 1-click checkout recovery links.
+                    Shoppers abandoning payment at the final step show high purchase intent. RazorShield detects dropped sessions after 30 minutes, validates merchant profitability margins, and delivers 1-click checkout recovery links.
                   </p>
 
                   <div className="space-y-4 pt-2">
@@ -1075,7 +1069,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
             </h2>
 
             <p className="text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
-              Rather than relying on ungrounded prompts or invented rules, every mechanism in ReClaim was cross-referenced and verified against primary sources, including <strong>NPCI AutoPay circulars (May 2026)</strong>, <strong>MSMED Act 2006 statutory penal interest</strong>, <strong>RBI Monetary Policy Bank Rates</strong>, <strong>Razorpay FTX&apos;26 Agent Studio rails</strong>, and <strong>Baremetrics dunning benchmark data</strong>.
+              Rather than relying on ungrounded prompts or invented rules, every mechanism in RazorShield was cross-referenced and verified against primary sources, including <strong>NPCI AutoPay circulars (May 2026)</strong>, <strong>MSMED Act 2006 statutory penal interest</strong>, <strong>RBI Monetary Policy Bank Rates</strong>, <strong>Razorpay FTX&apos;26 Agent Studio rails</strong>, and <strong>Baremetrics dunning benchmark data</strong>.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-6 text-base sm:text-lg font-bold text-slate-700">
@@ -1195,17 +1189,15 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
             
             {/* Left: Brand Identity & Status */}
             <div className="md:col-span-5 space-y-5 text-left">
-              <div className="flex items-center gap-3.5">
-                <img 
-                  src="/logo.png" 
-                  alt="ReClaim" 
-                  className="h-10 w-10 rounded-xl object-contain bg-white p-1 shadow-xs border border-slate-200" 
-                />
+              <div className="flex items-center gap-3.5 select-none">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 border border-blue-400/40">
+                  <BadgeCheck className="h-5 w-5" />
+                </div>
                 <div className="flex items-center gap-2.5">
-                  <span className="text-2xl font-extrabold tracking-tight text-[#0c2340]">
-                    Re<span className="text-[#0066ff]">Claim</span>
+                  <span className="text-2xl font-black tracking-tight text-[#0c2340]">
+                    Razor<span className="text-blue-600">Shield</span>
                   </span>
-                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#0066ff] border border-blue-200/60">
+                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-600 border border-blue-200/60">
                     Track 03
                   </span>
                 </div>
@@ -1271,7 +1263,7 @@ export default function LandingPage({ onLaunchConsole }: LandingPageProps) {
           {/* Bottom Bar: Copyright & Verified Submission */}
           <div className="pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm sm:text-base text-slate-500 font-medium">
             <p>
-              &copy; 2026 ReClaim &bull; Track 03 Submission
+              &copy; 2026 RazorShield &bull; Track 03 Submission
             </p>
             <p className="flex items-center gap-2 text-slate-600">
               <BadgeCheck className="h-5 w-5 text-[#0066ff]" />

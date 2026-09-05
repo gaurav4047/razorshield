@@ -1,7 +1,7 @@
-# <img src="./frontend/public/logo.png" width="42" height="42" alt="ReClaim Logo" align="middle" /> ReClaim: Autonomous Revenue Recovery Platform
+# <img src="./frontend/public/logo.png" width="42" height="42" alt="RazorShield Logo" align="middle" /> RazorShield: Autonomous Revenue Recovery & Payment Risk Defense
 
 > **Razorpay AI Buildathon | Track 03: AI Revenue Recovery**  
-> *Find revenue that is slipping away and win it back.*
+> *Autonomous Revenue Recovery & Gateway Defense Platform*
 
 [![YouTube Demo Video](https://img.shields.io/badge/YouTube-Watch%20Demo%20Video-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/_zdhl8A5mE4)
 [![Research & Citations](https://img.shields.io/badge/Research-Sources%20%26%20Citations-0066FF?style=for-the-badge&logo=googledocs&logoColor=white)](./RESEARCH.md)
@@ -12,7 +12,7 @@
 
 Most payment recovery tools in India rely on static retry schedules. When a recurring mandate or subscription charge drops, the gateway tries again 24 or 48 hours later without checking why it failed in the first place. That approach triggers bank bounce penalties for customers, wastes gateway fees for merchants, and damages customer goodwill when people get blamed for server timeouts.
 
-ReClaim is an autonomous recovery system built around Indian payment rails and statutory law. Instead of guessing, it classifies payment failures into a closed set of 27 root causes across three distinct business domains:
+RazorShield is an autonomous recovery system built around Indian payment rails and statutory law. Instead of guessing, it classifies payment failures into a closed set of 27 root causes across three distinct business domains:
 
 1. **Module A (Subscriptions and Mandates):** Failed UPI AutoPay, card subscriptions, netbanking debits, wallets, and EMI transactions.
 2. **Module B (B2B Receivables):** Overdue commercial trade invoices governed by the MSMED Act 2006 (Sections 15 and 16).
@@ -21,18 +21,18 @@ ReClaim is an autonomous recovery system built around Indian payment rails and s
 The core architecture maintains a strict separation of concerns: AI models read unstructured errors, evaluate case context, and propose actions, but 100% deterministic code holds absolute veto authority. Before any recovery action reaches Razorpay APIs, it passes through 13 non-negotiable compliance stopping rules. Every action taken (and every action deliberately blocked) is logged to an immutable PostgreSQL audit ledger streamed live to the dashboard over WebSockets.
 
 > [!NOTE]
-> **Research & Regulatory Grounding:** To inspect the underlying market reports, central bank directions, and statutory acts (including the MSMED Act 2006, RBI Bank Rate, and NPCI AutoPay circulars) that shaped ReClaim's design decisions, see [RESEARCH.md](./RESEARCH.md).
+> **Research & Regulatory Grounding:** To inspect the underlying market reports, central bank directions, and statutory acts (including the MSMED Act 2006, RBI Bank Rate, and NPCI AutoPay circulars) that shaped RazorShield's design decisions, see [RESEARCH.md](./RESEARCH.md).
 
 > [!NOTE]
-> **Live API Execution & Sandbox Quota Guardrails:** While ReClaim autonomously runs failure signal parsing, MSMED interest calculation, stopping-rule policy gating, and batch pattern detection, external outbound actions (generating live Razorpay payment links, synthesizing Sarvam AI Hinglish voice notes, and sending outreach drafts) are triggered on demand by the operator within the Decision Packet console. This design prevents unintended exhaustion of third-party API credits and respects Razorpay's hard sandbox cap of 30 active payment links in test mode.
+> **Live API Execution & Sandbox Quota Guardrails:** While RazorShield autonomously runs failure signal parsing, MSMED interest calculation, stopping-rule policy gating, and batch pattern detection, external outbound actions (generating live Razorpay payment links, synthesizing Sarvam AI Hinglish voice notes, and sending outreach drafts) are triggered on demand by the operator within the Decision Packet console. This design prevents unintended exhaustion of third-party API credits and respects Razorpay's hard sandbox cap of 30 active payment links in test mode.
 
 ---
 
 ## 2. System Architecture
 
-ReClaim runs as a decoupled stack spanning a React dashboard, a FastAPI gateway, a LangGraph pipeline, and a PostgreSQL database.
+RazorShield runs as a decoupled stack spanning a React dashboard, a FastAPI gateway, a LangGraph pipeline, and a PostgreSQL database.
 
-![ReClaim System Architecture](./frontend/public/architecture_diagram.png)
+![RazorShield System Architecture](./frontend/public/architecture_diagram.png)
 
 ### Architectural Flow
 1. **Client Tier (React 18, Vite, Tailwind CSS, shadcn/ui):** An operations dashboard displaying aggregate recovery yield, contextual systemic anomaly alerts, module queues (A, B, and C), an explainability decision packet with voice note playback, and a live WebSocket audit stream.
@@ -53,7 +53,7 @@ ReClaim runs as a decoupled stack spanning a React dashboard, a FastAPI gateway,
 
 ## 3. Webhook Ingestion and Settlement Reconciliation
 
-In ReClaim, revenue recovery is never marked based on optimistic assumptions. A case is marked recovered only when confirmed by a signed, verified Razorpay webhook.
+In RazorShield, revenue recovery is never marked based on optimistic assumptions. A case is marked recovered only when confirmed by a signed, verified Razorpay webhook.
 
 ![Webhook Ingestion and Settlement Reconciliation](./frontend/public/webhook_settlement.png)
 
@@ -120,7 +120,7 @@ The Operations Dashboard (`frontend/src/components/queue/CaseQueue.tsx`) provide
 
 ## 6. Multi-Model AI Layer and Bounded Autonomy
 
-ReClaim divides work across models based on task requirements:
+RazorShield divides work across models based on task requirements:
 
 ```
                           ┌────────────────────────┐
@@ -168,7 +168,7 @@ ReClaim divides work across models based on task requirements:
 
 ### Deep Dive: Hybrid Batch-Level Pattern Detection and Narration
 
-In financial operations, relying purely on LLMs to detect anomalies across hundreds of transactions frequently produces hallucinations, exaggerated percentages, or missed clusters. Conversely, rigid statistical scripts cannot formulate dynamic human-readable executive summaries. ReClaim resolves this through a hybrid three-step pipeline defined across `app/ai_layer/prompts/batch_pattern_detection.py` and `app/domain_logic/pattern_detection.py`:
+In financial operations, relying purely on LLMs to detect anomalies across hundreds of transactions frequently produces hallucinations, exaggerated percentages, or missed clusters. Conversely, rigid statistical scripts cannot formulate dynamic human-readable executive summaries. RazorShield resolves this through a hybrid three-step pipeline defined across `app/ai_layer/prompts/batch_pattern_detection.py` and `app/domain_logic/pattern_detection.py`:
 
 ```
 ┌─────────────────────────┐
@@ -249,7 +249,7 @@ Module B embeds the Micro, Small and Medium Enterprises Development (MSMED) Act 
 
 ## 9. Financial Settlement Calculations (MDR + GST)
 
-ReClaim reports gross recovered revenue and net settled yield, factoring standard Razorpay domestic payment gateway deductions:
+RazorShield reports gross recovered revenue and net settled yield, factoring standard Razorpay domestic payment gateway deductions:
 * **Razorpay Standard Platform Fee (MDR):** $2.00\%$
 * **Goods and Services Tax (GST on MDR):** $18.00\%$ of MDR ($0.36\%$ of gross)
 * **Total Gateway Deduction:** $2.36\%$

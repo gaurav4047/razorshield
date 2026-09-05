@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AuditLogEntry } from "@/types/api";
+import { AuditLogEntry, CaseType } from "@/types/api";
 import { fetchApi } from "./client";
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || "ws://localhost:8000";

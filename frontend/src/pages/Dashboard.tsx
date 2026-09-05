@@ -47,49 +47,47 @@ export default function Dashboard({ onBackToLanding }: DashboardProps) {
   const countC = summary?.modules?.C?.cases ?? 0;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen bg-[#070b12] text-slate-100 flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
       {/* 1. Header Navigation */}
       <header 
         className={`sticky top-0 z-40 px-6 lg:px-12 transition-all duration-300 ${
           isScrolled 
-            ? "border-b border-slate-200/80 bg-white/80 backdrop-blur-xl shadow-xs py-3.5 sm:py-4" 
-            : "border-b border-slate-200/50 bg-white/60 backdrop-blur-md py-4 sm:py-5"
+            ? "border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl shadow-2xl py-3.5" 
+            : "border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md py-4 sm:py-5"
         }`}
       >
         <div className="mx-auto flex max-w-[1720px] items-center justify-between gap-4">
           
           {/* Brand Identity */}
           <div className="flex items-center gap-3.5 select-none">
-            <img 
-              src="/logo.png" 
-              alt="ReClaim" 
-              className="h-11 w-11 rounded-xl object-contain bg-white p-1 shadow-xs border border-slate-200" 
-            />
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 border border-blue-400/40">
+              <BadgeCheck className="h-6 w-6" />
+            </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <span className="text-2xl font-extrabold tracking-tight text-[#0c2340]">
-                  Re<span className="text-[#0066ff]">Claim</span>
+                <span className="text-2xl font-black tracking-tight text-white font-sans">
+                  Razor<span className="text-blue-500">Shield</span>
                 </span>
-                <Badge className="border-blue-200/80 bg-blue-50 text-[#0066ff] text-xs font-bold px-3 py-0.5 rounded-full shadow-xs">
-                  Operations Console
+                <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-300 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-xs">
+                  Autonomous Console
                 </Badge>
               </div>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                Autonomous Recovery for Indian Commerce
+              <p className="text-xs text-slate-400 font-medium">
+                Autonomous Revenue Recovery &amp; Gateway Defense
               </p>
             </div>
           </div>
 
           {/* Right Header Actions */}
-          <div className="flex flex-wrap items-center gap-3.5">
+          <div className="flex flex-wrap items-center gap-3">
             {onBackToLanding && (
               <Button
                 variant="outline"
                 onClick={onBackToLanding}
-                className="border-slate-200/80 bg-white/70 backdrop-blur-sm hover:bg-white hover:border-slate-300 text-slate-700 hover:text-slate-900 text-sm font-bold h-11 px-4 rounded-xl shadow-2xs gap-2 transition-all active:scale-98"
+                className="border-slate-800 bg-slate-900/80 hover:bg-slate-850 hover:border-slate-700 text-slate-300 hover:text-white text-xs sm:text-sm font-semibold h-10 px-4 rounded-xl shadow-xs gap-2 transition-all active:scale-98"
               >
-                <ArrowLeft className="h-4 w-4 text-slate-500" />
-                <span>Product Overview</span>
+                <ArrowLeft className="h-4 w-4 text-slate-400" />
+                <span>Interactive Overview</span>
               </Button>
             )}
 
@@ -100,10 +98,10 @@ export default function Dashboard({ onBackToLanding }: DashboardProps) {
                   <select
                     value={currentBatchId || ""}
                     onChange={(e) => setSelectedBatchId(e.target.value)}
-                    className="h-11 rounded-xl border border-slate-200/80 bg-white/70 backdrop-blur-sm hover:bg-white focus:bg-white px-3.5 pr-8 text-xs sm:text-sm font-bold text-slate-800 focus:border-[#0066ff] focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-2xs appearance-none cursor-pointer transition-all"
+                    className="h-10 rounded-xl border border-slate-700 bg-slate-900/90 hover:bg-slate-850 px-3.5 pr-8 text-xs sm:text-sm font-semibold text-slate-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-inner appearance-none cursor-pointer transition-all"
                   >
                     {batches.map((b) => (
-                      <option key={b.id} value={b.id}>
+                      <option key={b.id} value={b.id} className="bg-slate-900 text-slate-200">
                         {b.label} ({new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                       </option>
                     ))}
@@ -119,10 +117,10 @@ export default function Dashboard({ onBackToLanding }: DashboardProps) {
             <Button
               onClick={() => runBatchMutation.mutate()}
               disabled={runBatchMutation.isPending}
-              className="bg-[#0066ff] text-white hover:bg-[#0052cc] text-xs sm:text-sm font-bold gap-2 h-11 px-5 rounded-xl shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 transition-all active:scale-98"
+              className="bg-blue-600 text-white hover:bg-blue-500 text-xs sm:text-sm font-bold gap-2 h-10 px-4.5 rounded-xl shadow-lg shadow-blue-600/30 hover:shadow-blue-500/40 transition-all active:scale-98 border border-blue-400/40"
             >
               <RefreshCw className={`h-4 w-4 ${runBatchMutation.isPending ? "animate-spin" : ""}`} />
-              <span>{runBatchMutation.isPending ? "Generating 135 Cases..." : "Run Synthetic Scenario"}</span>
+              <span>{runBatchMutation.isPending ? "Executing Recovery Run..." : "Run Autonomous Scenario"}</span>
             </Button>
           </div>
 
@@ -130,7 +128,7 @@ export default function Dashboard({ onBackToLanding }: DashboardProps) {
       </header>
 
       {/* Main Dashboard Container */}
-      <main className="mx-auto w-full max-w-[1720px] flex-1 px-6 lg:px-12 py-8 space-y-8">
+      <main className="mx-auto w-full max-w-[1720px] flex-1 px-6 lg:px-12 py-8 space-y-7">
         
         {/* 2. Top KPI Stat Bar */}
         <BatchSummary batchId={currentBatchId} />
@@ -140,37 +138,37 @@ export default function Dashboard({ onBackToLanding }: DashboardProps) {
 
         {/* 4. Module Queue Tabs */}
         <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as "A" | "B" | "C")} className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200/90 pb-3">
-            <TabsList className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 shadow-inner h-auto">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <TabsList className="bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-inner h-auto gap-1">
               <TabsTrigger
                 value="A"
-                className="data-[state=active]:bg-white data-[state=active]:text-[#0066ff] data-[state=active]:shadow-sm data-[state=active]:ring-2 data-[state=active]:ring-blue-500/20 text-xs sm:text-sm font-bold gap-2.5 px-6 py-3 rounded-xl transition-all"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border-blue-400/40 text-xs sm:text-sm font-semibold gap-2.5 px-5 py-2.5 rounded-xl transition-all text-slate-400 hover:text-slate-200"
               >
                 <CreditCard className="h-4 w-4" />
-                <span>Module A: Payments &amp; Mandates</span>
-                <Badge variant="outline" className="ml-1.5 border-slate-200 bg-slate-50 text-slate-700 text-xs px-2.5 py-0.5 font-mono font-bold">
+                <span>Stream A: Mandates &amp; Payments</span>
+                <Badge variant="outline" className="ml-1 border-slate-700 bg-slate-800 text-slate-300 text-xs px-2 py-0.5 font-mono font-bold">
                   {countA}
                 </Badge>
               </TabsTrigger>
 
               <TabsTrigger
                 value="B"
-                className="data-[state=active]:bg-white data-[state=active]:text-amber-800 data-[state=active]:shadow-sm data-[state=active]:ring-2 data-[state=active]:ring-amber-500/20 text-xs sm:text-sm font-bold gap-2.5 px-6 py-3 rounded-xl transition-all"
+                className="data-[state=active]:bg-amber-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border-amber-400/40 text-xs sm:text-sm font-semibold gap-2.5 px-5 py-2.5 rounded-xl transition-all text-slate-400 hover:text-slate-200"
               >
                 <Building2 className="h-4 w-4" />
-                <span>Module B: B2B Invoices &amp; MSMED</span>
-                <Badge variant="outline" className="ml-1.5 border-slate-200 bg-slate-50 text-slate-700 text-xs px-2.5 py-0.5 font-mono font-bold">
+                <span>Stream B: MSMED B2B Receivables</span>
+                <Badge variant="outline" className="ml-1 border-slate-700 bg-slate-800 text-slate-300 text-xs px-2 py-0.5 font-mono font-bold">
                   {countB}
                 </Badge>
               </TabsTrigger>
 
               <TabsTrigger
                 value="C"
-                className="data-[state=active]:bg-white data-[state=active]:text-indigo-800 data-[state=active]:shadow-sm data-[state=active]:ring-2 data-[state=active]:ring-indigo-500/20 text-xs sm:text-sm font-bold gap-2.5 px-6 py-3 rounded-xl transition-all"
+                className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border-indigo-400/40 text-xs sm:text-sm font-semibold gap-2.5 px-5 py-2.5 rounded-xl transition-all text-slate-400 hover:text-slate-200"
               >
                 <ShoppingCart className="h-4 w-4" />
-                <span>Module C: Abandoned Checkout</span>
-                <Badge variant="outline" className="ml-1.5 border-slate-200 bg-slate-50 text-slate-700 text-xs px-2.5 py-0.5 font-mono font-bold">
+                <span>Stream C: Abandoned Checkout</span>
+                <Badge variant="outline" className="ml-1 border-slate-700 bg-slate-800 text-slate-300 text-xs px-2 py-0.5 font-mono font-bold">
                   {countC}
                 </Badge>
               </TabsTrigger>
@@ -194,14 +192,14 @@ export default function Dashboard({ onBackToLanding }: DashboardProps) {
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-slate-200 bg-white px-6 lg:px-12 py-7 text-sm sm:text-base text-slate-500 font-medium">
+      <footer className="mt-auto border-t border-slate-800/80 bg-slate-950/80 px-6 lg:px-12 py-6 text-sm text-slate-400 font-medium">
         <div className="mx-auto flex max-w-[1720px] flex-col sm:flex-row items-center justify-between gap-4">
           <p>
-            &copy; 2026 ReClaim &bull; Track 03 Submission
+            &copy; 2026 RazorShield &bull; Razorpay AI Buildathon Track 03
           </p>
-          <p className="flex items-center gap-2 text-slate-600">
-            <BadgeCheck className="h-5 w-5 text-[#0066ff]" />
-            <span>Real Razorpay Sandbox API Verified &bull; Zero Mock Gateway Responses</span>
+          <p className="flex items-center gap-2 text-slate-300">
+            <BadgeCheck className="h-5 w-5 text-blue-400" />
+            <span>Real Razorpay Sandbox API Verified &bull; Zero Gateway Mock Responses</span>
           </p>
         </div>
       </footer>
